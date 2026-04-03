@@ -46,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -85,7 +86,6 @@ val HatchSteelDark = Color(0xFF0B1218)
 val HatchLine = Color(0xFF29414F)
 val Black = Color(0xFF000000)
 
-
 @Composable
 fun CyberDialog(
     show: Boolean,
@@ -93,7 +93,7 @@ fun CyberDialog(
     confirmText: String = "LAUNCH ▶",
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
-    content: @Composable ColumnScope.() -> Unit // Now accepts any layout!
+    content: @Composable ColumnScope.() -> Unit
 ) {
     if (!show) return
 
@@ -101,32 +101,72 @@ fun CyberDialog(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .shadow(20.dp, RoundedCornerShape(16.dp), ambientColor = HudBlue, spotColor = Color(0xFF008CFF))
-                .border(1.5.dp, Brush.linearGradient(listOf(HudBlue, Color(0xFF008CFF), HudBlue)), RoundedCornerShape(16.dp))
-                .background(Brush.verticalGradient(listOf(Color(0xFF020617).copy(alpha = 0.95f), Color(0xFF020617).copy(alpha = 0.85f))), RoundedCornerShape(16.dp))
+                .shadow(
+                    elevation = 20.dp,
+                    shape = RoundedCornerShape(16.dp),
+                    ambientColor = HudBlue,
+                    spotColor = Color(0xFF008CFF)
+                )
+                .border(
+                    width = 1.5.dp,
+                    brush = Brush.linearGradient(listOf(HudBlue, Color(0xFF008CFF), HudBlue)),
+                    shape = RoundedCornerShape(16.dp)
+                )
+                .background(
+                    brush = Brush.verticalGradient(
+                        listOf(
+                            Color(0xFF020617).copy(alpha = 0.95f),
+                            Color(0xFF020617).copy(alpha = 0.85f)
+                        )
+                    ),
+                    shape = RoundedCornerShape(16.dp)
+                )
                 .padding(20.dp)
         ) {
             Column {
-                Text(title, color = HudText, fontWeight = FontWeight.Bold, fontSize = 18.sp, letterSpacing = 2.sp)
+                Text(
+                    text = title,
+                    color = HudText,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    letterSpacing = 2.sp
+                )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // This is where we "wire in" the custom UI
                 content()
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     TextButton(onClick = onDismiss) {
                         Text("ABORT", color = Color.Gray)
                     }
+
                     Spacer(modifier = Modifier.width(12.dp))
-                    CyberButton(onClick = onConfirm, modifier = Modifier.height(45.dp).width(130.dp)) {
+
+                    CyberButton(
+                        onClick = onConfirm,
+                        modifier = Modifier
+                            .height(45.dp)
+                            .width(130.dp)
+                    ) {
                         Box(
-                            modifier = Modifier.fillMaxSize().border(1.dp, HudBlue, RoundedCornerShape(10.dp)).background(HudBlue.copy(alpha = 0.1f), RoundedCornerShape(10.dp)),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .border(1.dp, HudBlue, RoundedCornerShape(10.dp))
+                                .background(HudBlue.copy(alpha = 0.1f), RoundedCornerShape(10.dp)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(confirmText, color = HudBlue, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = confirmText,
+                                color = HudBlue,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
@@ -324,8 +364,18 @@ fun JaxDriverScreen(
             },
             onDisconnect = { ros.disconnect() },
             extraContent = {
-                TextButton(onClick = onBackToMenu, modifier = Modifier.fillMaxWidth().height(40.dp)) {
-                    Text("BACK TO MAIN MENU", color = HudBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                TextButton(
+                    onClick = onBackToMenu,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(40.dp)
+                ) {
+                    Text(
+                        text = "BACK TO MAIN MENU",
+                        color = HudBlue,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         )
@@ -344,8 +394,13 @@ fun JaxDriverScreen(
             videoLoaded = false
             videoError = null
         },
-        onLeftJoystickChanged = { x, y -> moveX = x.toDouble(); moveY = y.toDouble() },
-        onRightJoystickChanged = { x, _ -> turnZ = x.toDouble() },
+        onLeftJoystickChanged = { x, y ->
+            moveX = x.toDouble()
+            moveY = y.toDouble()
+        },
+        onRightJoystickChanged = { x, _ ->
+            turnZ = x.toDouble()
+        },
         onModeSelected = { mode -> ros.publishMode(currentRobot, mode) },
         onSettingsClick = { showSettings = true },
         videoFeed = {
@@ -388,28 +443,49 @@ fun RobotSetupScreen(
     val scope = rememberCoroutineScope()
 
     var selectedTabOrStep by remember { mutableIntStateOf(initialSelectedTabOrStep) }
-    // Logic to track high-water mark for adding flow
     var maxStepReached by remember(isAdding) { mutableIntStateOf(initialSelectedTabOrStep) }
 
     if (robotToDelete != null) {
         AlertDialog(
             onDismissRequest = { robotToDelete = null },
-            title = { Text("DELETE ROBOT", color = HudBlue, fontWeight = FontWeight.Bold) },
-            text = { Text("Are you sure you want to delete '${robotToDelete?.name}'?", color = HudText) },
+            title = {
+                Text(
+                    text = "DELETE ROBOT",
+                    color = HudBlue,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to delete '${robotToDelete?.name}'?",
+                    color = HudText
+                )
+            },
             containerColor = HudBackground,
             confirmButton = {
-                TextButton(onClick = {
-                    robotToDelete?.let { onDelete(it) }
-                    robotToDelete = null
-                }) { Text("DELETE", color = Color.Red, fontWeight = FontWeight.Bold) }
+                TextButton(
+                    onClick = {
+                        robotToDelete?.let { onDelete(it) }
+                        robotToDelete = null
+                    }
+                ) {
+                    Text("DELETE", color = Color.Red, fontWeight = FontWeight.Bold)
+                }
             },
             dismissButton = {
-                TextButton(onClick = { robotToDelete = null }) { Text("CANCEL", color = HudText.copy(alpha = 0.6f)) }
+                TextButton(onClick = { robotToDelete = null }) {
+                    Text("CANCEL", color = HudText.copy(alpha = 0.6f))
+                }
             }
         )
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(HudBackground).statusBarsPadding()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(HudBackground)
+            .statusBarsPadding()
+    ) {
         Image(
             painter = painterResource(id = R.drawable.bg_app),
             contentDescription = null,
@@ -418,9 +494,21 @@ fun RobotSetupScreen(
         )
 
         if (editingRobot == null && !isAdding) {
-            Column(modifier = Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Spacer(modifier = Modifier.height(25.dp))
-                Image(painter = painterResource(id = R.drawable.saved_robots), contentDescription = "Logo", modifier = Modifier.fillMaxWidth().wrapContentHeight(), contentScale = ContentScale.Fit)
+                Image(
+                    painter = painterResource(id = R.drawable.saved_robots),
+                    contentDescription = "Logo",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .wrapContentHeight(),
+                    contentScale = ContentScale.Fit
+                )
                 Spacer(modifier = Modifier.height(16.dp))
 
                 CyberButton(
@@ -429,22 +517,45 @@ fun RobotSetupScreen(
                         selectedTabOrStep = 0
                         maxStepReached = 0
                     },
-                    modifier = Modifier.align(Alignment.End).size(width = 130.dp, height = 35.dp)
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .size(width = 130.dp, height = 35.dp)
                 ) {
-                    Image(painter = painterResource(R.drawable.add_new_button), contentDescription = "Add New", modifier = Modifier.fillMaxSize())
+                    Image(
+                        painter = painterResource(R.drawable.add_new_button),
+                        contentDescription = "Add New",
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
 
-                LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                     items(savedRobots) { robot ->
-                        RobotListItem(robot = robot, onEdit = {
-                            editingRobot = robot
-                            selectedTabOrStep = 0
-                        }, onDelete = { robotToDelete = robot })
+                        RobotListItem(
+                            robot = robot,
+                            onEdit = {
+                                editingRobot = robot
+                                isAdding = false
+                                selectedTabOrStep = 0
+                            },
+                            onDelete = { robotToDelete = robot }
+                        )
                     }
                 }
 
-                CyberButton(onClick = onBack, modifier = Modifier.fillMaxWidth().height(50.dp)) {
-                    Image(painter = painterResource(R.drawable.back_button), contentDescription = "Back", modifier = Modifier.fillMaxSize())
+                CyberButton(
+                    onClick = onBack,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                ) {
+                    Image(
+                        painter = painterResource(R.drawable.back_button),
+                        contentDescription = "Back",
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
                 Spacer(modifier = Modifier.height(25.dp))
             }
@@ -453,7 +564,9 @@ fun RobotSetupScreen(
             var name by remember(editingRobot) { mutableStateOf(initial.name) }
             var addr by remember(editingRobot) { mutableStateOf(initial.rosAddress) }
             var url by remember(editingRobot) { mutableStateOf(initial.videoUrl) }
-            var selectedThumbnailUri by remember(editingRobot) { mutableStateOf<Uri?>(initial.thumbnailPath?.let { Uri.fromFile(File(it)) }) }
+            var selectedThumbnailUri by remember(editingRobot) {
+                mutableStateOf<Uri?>(initial.thumbnailPath?.let { Uri.fromFile(File(it)) })
+            }
 
             var allDiscoveredTopics by remember { mutableStateOf<List<RosTopicInfo>>(emptyList()) }
             var cmdVelTopic by remember(editingRobot) { mutableStateOf(initial.cmdVelTopic) }
@@ -471,23 +584,45 @@ fun RobotSetupScreen(
             var showModeDialog by remember { mutableStateOf(false) }
             var modeToEditIndex by remember { mutableStateOf<Int?>(null) }
 
-            val imagePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> if (uri != null) selectedThumbnailUri = uri }
+            val imagePickerLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.GetContent()
+            ) { uri ->
+                if (uri != null) selectedThumbnailUri = uri
+            }
 
             if (showModeDialog) {
                 ModeEditDialog(
                     initialMode = if (modeToEditIndex != null) modes[modeToEditIndex!!] else null,
-                    onDismiss = { showModeDialog = false; modeToEditIndex = null },
+                    onDismiss = {
+                        showModeDialog = false
+                        modeToEditIndex = null
+                    },
                     onSave = { updatedMode ->
                         if (modeToEditIndex != null) modes[modeToEditIndex!!] = updatedMode
                         else if (modes.none { it.command.equals(updatedMode.command, ignoreCase = true) }) modes.add(updatedMode)
-                        showModeDialog = false; modeToEditIndex = null
+                        showModeDialog = false
+                        modeToEditIndex = null
                     }
                 )
             }
 
-            Column(modifier = Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Spacer(modifier = Modifier.height(25.dp))
-                Image(painter = painterResource(id = R.drawable.new_robot), contentDescription = "Logo", modifier = Modifier.fillMaxWidth().wrapContentHeight(), contentScale = ContentScale.Fit)
+                Image(
+                    painter = painterResource(
+                        id = if (isAdding) R.drawable.new_robot else R.drawable.saved_robots
+                    ),
+                    contentDescription = "Logo",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .wrapContentHeight(),
+                    contentScale = ContentScale.Fit
+                )
 
                 TabRow(
                     selectedTabIndex = selectedTabOrStep,
@@ -495,7 +630,10 @@ fun RobotSetupScreen(
                     contentColor = HudBlue,
                     indicator = { tabPositions ->
                         if (selectedTabOrStep < tabPositions.size) {
-                            TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(tabPositions[selectedTabOrStep]), color = HudBlue)
+                            TabRowDefaults.SecondaryIndicator(
+                                modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTabOrStep]),
+                                color = HudBlue
+                            )
                         }
                     },
                     divider = {}
@@ -504,35 +642,57 @@ fun RobotSetupScreen(
                         val isEnabled = !isAdding || index <= maxStepReached
                         Tab(
                             selected = selectedTabOrStep == index,
-                            onClick = {
-                                if (isEnabled) {
-                                    selectedTabOrStep = index
-                                }
-                            },
+                            onClick = { if (isEnabled) selectedTabOrStep = index },
                             enabled = isEnabled,
                             text = {
                                 Text(
                                     text = title,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isEnabled) HudText else HudText.copy(alpha = 0.3f)
+                                    color = if (isEnabled) HudText else HudBlue
                                 )
                             }
                         )
                     }
                 }
 
-                Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
                     when (selectedTabOrStep) {
                         0 -> {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                Box(modifier = Modifier.size(80.dp).clip(RoundedCornerShape(12.dp)).background(HudSurface).border(1.dp, HudBorder.copy(alpha = 0.3f), RoundedCornerShape(12.dp)).clickable { imagePickerLauncher.launch("image/*") }, contentAlignment = Alignment.Center) {
-                                    if (selectedThumbnailUri != null) AsyncImage(model = selectedThumbnailUri, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                                    else Icon(Icons.Default.Image, null, tint = HudText.copy(alpha = 0.4f))
-                                }
-                                Column {
-                                    Text("ROBOT THUMBNAIL", color = HudBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    Text("Tap to upload image", color = HudText.copy(alpha = 0.5f), fontSize = 10.sp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(80.dp)
+                                        .border(
+                                            width = 1.dp,
+                                            color = HudText.copy(alpha = 0.3f),
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                        .clickable { imagePickerLauncher.launch("image/*") },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (selectedThumbnailUri != null) {
+                                        AsyncImage(
+                                            model = selectedThumbnailUri,
+                                            contentDescription = null,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.Image,
+                                            contentDescription = null,
+                                            tint = HudText.copy(alpha = 0.4f)
+                                        )
+                                    }
                                 }
                             }
                             HudTextField(value = name, onValueChange = { name = it }, label = "ROBOT NAME *")
@@ -543,55 +703,140 @@ fun RobotSetupScreen(
                             CyberButton(
                                 enabled = !discovering,
                                 onClick = {
-                                    if (addr.isBlank()) { discoverStatus = "Enter IP first"; return@CyberButton }
-                                    discovering = true; discoverStatus = "Connecting..."
+                                    if (addr.isBlank()) {
+                                        discoverStatus = "Enter IP first"
+                                        return@CyberButton
+                                    }
+                                    discovering = true
+                                    discoverStatus = "Connecting..."
                                     scope.launch {
                                         ros.disconnect()
                                         var connected = false
                                         ros.connect("ws://$addr") { connected = true }
                                         delay(3000)
-                                        if (!connected) { discovering = false; discoverStatus = "Timeout"; return@launch }
+                                        if (!connected) {
+                                            discovering = false
+                                            discoverStatus = "Timeout"
+                                            return@launch
+                                        }
                                         ros.discoverTopics { res ->
                                             discovering = false
                                             res.onSuccess { disc ->
                                                 allDiscoveredTopics = disc.allTopics
-                                                cmdVelTopic = disc.cmdVelTopic; modeTopic = disc.modeTopic
-                                                batteryTopic = disc.batteryTopic; imuTopic = disc.imuTopic
-                                                odomTopic = disc.odomTopic; jointStateTopic = disc.jointStateTopic
+                                                cmdVelTopic = disc.cmdVelTopic
+                                                modeTopic = disc.modeTopic
+                                                batteryTopic = disc.batteryTopic
+                                                imuTopic = disc.imuTopic
+                                                odomTopic = disc.odomTopic
+                                                jointStateTopic = disc.jointStateTopic
                                                 discoverStatus = "Topics synchronized"
-                                            }.onFailure { discoverStatus = "Discovery failed" }
+                                            }.onFailure {
+                                                discoverStatus = "Discovery failed"
+                                            }
                                         }
                                     }
                                 },
-                                modifier = Modifier.fillMaxWidth().height(60.dp)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(60.dp)
                             ) {
-                                Image(painter = painterResource(R.drawable.discover_button), contentDescription = null, modifier = Modifier.fillMaxSize())
+                                Image(
+                                    painter = painterResource(R.drawable.discover_button),
+                                    contentDescription = null,
+                                    modifier = Modifier.fillMaxSize()
+                                )
                             }
-                            if (!discoverStatus.isNullOrBlank()) Text(discoverStatus!!, color = HudBlue, fontSize = 12.sp)
+                            if (!discoverStatus.isNullOrBlank()) {
+                                Text(
+                                    text = discoverStatus!!,
+                                    color = HudBlue,
+                                    fontSize = 12.sp
+                                )
+                            }
 
-                            TopicBindingDropdown("CMD VEL", cmdVelTopic, buildTopicOptions(allDiscoveredTopics, listOf("geometry_msgs/Twist")), "Select...", { cmdVelTopic = it })
-                            TopicBindingDropdown("MODE TOPIC", modeTopic, buildTopicOptions(allDiscoveredTopics, listOf("std_msgs/String")), "Select...", { modeTopic = it })
-                            TopicBindingDropdown("BATTERY", batteryTopic, buildTopicOptions(allDiscoveredTopics, listOf("sensor_msgs/BatteryState")), "Select...", { batteryTopic = it })
-                            TopicBindingDropdown("IMU", imuTopic, buildTopicOptions(allDiscoveredTopics, listOf("sensor_msgs/Imu")), "Select...", { imuTopic = it })
-                            TopicBindingDropdown("ODOM", odomTopic, buildTopicOptions(allDiscoveredTopics, listOf("nav_msgs/Odometry")), "Select...", { odomTopic = it })
-                            TopicBindingDropdown("JOINT STATES", jointStateTopic, buildTopicOptions(allDiscoveredTopics, listOf("sensor_msgs/JointState")), "Select...", { jointStateTopic = it })
+                            TopicBindingDropdown(
+                                title = "CMD VEL",
+                                selected = cmdVelTopic,
+                                options = buildTopicOptions(allDiscoveredTopics, listOf("geometry_msgs/Twist")),
+                                placeholder = "Select Topic...",
+                                onSelected = { cmdVelTopic = it }
+                            )
+                            TopicBindingDropdown(
+                                title = "MODE TOPIC",
+                                selected = modeTopic,
+                                options = buildTopicOptions(allDiscoveredTopics, listOf("std_msgs/String")),
+                                placeholder = "Select Topic...",
+                                onSelected = { modeTopic = it }
+                            )
+                            TopicBindingDropdown(
+                                title = "BATTERY",
+                                selected = batteryTopic,
+                                options = buildTopicOptions(allDiscoveredTopics, listOf("sensor_msgs/BatteryState")),
+                                placeholder = "Select Topic...",
+                                onSelected = { batteryTopic = it }
+                            )
+                            TopicBindingDropdown(
+                                title = "IMU",
+                                selected = imuTopic,
+                                options = buildTopicOptions(allDiscoveredTopics, listOf("sensor_msgs/Imu")),
+                                placeholder = "Select Topic...",
+                                onSelected = { imuTopic = it }
+                            )
+                            TopicBindingDropdown(
+                                title = "ODOM",
+                                selected = odomTopic,
+                                options = buildTopicOptions(allDiscoveredTopics, listOf("nav_msgs/Odometry")),
+                                placeholder = "Select Topic...",
+                                onSelected = { odomTopic = it }
+                            )
+                            TopicBindingDropdown(
+                                title = "JOINT STATES",
+                                selected = jointStateTopic,
+                                options = buildTopicOptions(allDiscoveredTopics, listOf("sensor_msgs/JointState")),
+                                placeholder = "Select Topic...",
+                                onSelected = { jointStateTopic = it }
+                            )
                         }
                         2 -> {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("CONFIGURED MODES", color = HudBlue, fontWeight = FontWeight.Bold)
-                                IconButton(onClick = { modeToEditIndex = null; showModeDialog = true }, modifier = Modifier.background(HudBlue.copy(alpha = 0.1f), CircleShape).size(32.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "CONFIGURED MODES",
+                                    color = HudBlue,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                IconButton(
+                                    onClick = {
+                                        modeToEditIndex = null
+                                        showModeDialog = true
+                                    },
+                                    modifier = Modifier
+                                        .background(HudBlue.copy(alpha = 0.1f), CircleShape)
+                                        .size(32.dp)
+                                ) {
                                     Icon(Icons.Default.Add, null, tint = HudBlue)
                                 }
                             }
                             modes.forEachIndexed { index, mode ->
-                                ModeEditorRow(mode, onEdit = { modeToEditIndex = index; showModeDialog = true }, onDelete = { modes.removeAt(index) })
+                                ModeEditorRow(
+                                    mode = mode,
+                                    onEdit = {
+                                        modeToEditIndex = index
+                                        showModeDialog = true
+                                    },
+                                    onDelete = { modes.removeAt(index) }
+                                )
                             }
                         }
                     }
                 }
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 32.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -605,10 +850,15 @@ fun RobotSetupScreen(
                                 selectedTabOrStep = 0
                             }
                         },
-                        modifier = Modifier.weight(1f).height(50.dp)
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp)
                     ) {
                         Image(
-                            painter = painterResource(if (isAdding && selectedTabOrStep > 0) R.drawable.back_button else R.drawable.cancel_button),
+                            painter = painterResource(
+                                if (isAdding && selectedTabOrStep > 0) R.drawable.back_button
+                                else R.drawable.cancel_button
+                            ),
                             contentDescription = null,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.FillBounds
@@ -621,7 +871,6 @@ fun RobotSetupScreen(
                         onClick = {
                             if (isAdding && selectedTabOrStep < 2) {
                                 selectedTabOrStep++
-                                // Unlock the next tab as we proceed
                                 if (selectedTabOrStep > maxStepReached) {
                                     maxStepReached = selectedTabOrStep
                                 }
@@ -629,14 +878,29 @@ fun RobotSetupScreen(
                                 val thumb = if (selectedThumbnailUri != null && selectedThumbnailUri.toString() != initial.thumbnailPath) {
                                     saveImageToInternalStorage(context, selectedThumbnailUri!!)
                                 } else initial.thumbnailPath
-                                val newConfig = RobotConfig(name, addr, url, thumb, cmdVelTopic ?: TopicBinding("/cmd_vel", "geometry_msgs/Twist"), modeTopic ?: TopicBinding("/jax_mode", "std_msgs/String"), batteryTopic, imuTopic, odomTopic, jointStateTopic, modes.toList())
+
+                                val newConfig = RobotConfig(
+                                    name = name,
+                                    rosAddress = addr,
+                                    videoUrl = url,
+                                    thumbnailPath = thumb,
+                                    cmdVelTopic = cmdVelTopic ?: TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
+                                    modeTopic = modeTopic ?: TopicBinding("/jax_mode", "std_msgs/String"),
+                                    batteryTopic = batteryTopic,
+                                    imuTopic = imuTopic,
+                                    odomTopic = odomTopic,
+                                    jointStateTopic = jointStateTopic,
+                                    modes = modes.toList()
+                                )
                                 onSave(editingRobot?.name, newConfig)
                                 editingRobot = null
                                 isAdding = false
                                 selectedTabOrStep = 0
                             }
                         },
-                        modifier = Modifier.weight(1f).height(50.dp)
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp)
                     ) {
                         val imgRes = when {
                             isAdding && selectedTabOrStep < 2 -> R.drawable.next_button
@@ -668,7 +932,14 @@ fun StartMenuScreen(
     var showRobotSelectDialog by remember { mutableStateOf(false) }
 
     if (showRobotSelectDialog) {
-        RobotSelectionDialog(savedRobots, onDismiss = { showRobotSelectDialog = false }, onSelect = { robot -> showRobotSelectDialog = false; onLaunchGamepad(robot) })
+        RobotSelectionDialog(
+            savedRobots = savedRobots,
+            onDismiss = { showRobotSelectDialog = false },
+            onSelect = { robot ->
+                showRobotSelectDialog = false
+                onLaunchGamepad(robot)
+            }
+        )
     }
 
     LaunchedEffect(Unit) {
@@ -687,19 +958,51 @@ fun StartMenuScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Image(painter = painterResource(id = R.drawable.bg_main), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        Column(modifier = Modifier.fillMaxSize().statusBarsPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Image(
+            painter = painterResource(id = R.drawable.bg_main),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             Spacer(modifier = Modifier.weight(0.52f))
             MainMenuPanel {
-                CyberButton(onClick = { showRobotSelectDialog = true }, modifier = Modifier.fillMaxWidth(.85f)) {
-                    Image(painter = painterResource(id = R.drawable.launch_controller), contentDescription = null, modifier = Modifier.fillMaxWidth(), contentScale = ContentScale.Fit)
+                CyberButton(
+                    onClick = { showRobotSelectDialog = true },
+                    modifier = Modifier.fillMaxWidth(.85f)
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.launch_controller),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxWidth(),
+                        contentScale = ContentScale.Fit
+                    )
                 }
                 Spacer(modifier = Modifier.height(20.dp))
-                CyberButton(onClick = onLaunchSetup, modifier = Modifier.fillMaxWidth(.85f)) {
-                    Image(painter = painterResource(id = R.drawable.robot_setup), contentDescription = null, modifier = Modifier.fillMaxWidth(), contentScale = ContentScale.Fit)
+                CyberButton(
+                    onClick = onLaunchSetup,
+                    modifier = Modifier.fillMaxWidth(.85f)
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.robot_setup),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxWidth(),
+                        contentScale = ContentScale.Fit
+                    )
                 }
                 Spacer(modifier = Modifier.height(20.dp))
-                Text(text = "CONNECTED TO: $wifiName", color = Color(0xFFA7F6FF).copy(alpha = 0.85f), fontSize = 10.sp, fontWeight = FontWeight.Medium, letterSpacing = 1.6.sp)
+                Text(
+                    text = "CONNECTED TO: $wifiName",
+                    color = HudBlue.copy(alpha = 0.85f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = 1.6.sp
+                )
             }
             Spacer(modifier = Modifier.weight(0.12f))
         }
@@ -721,9 +1024,10 @@ fun RobotSelectionDialog(
         onConfirm = { selected?.let { onSelect(it) } },
         onDismiss = onDismiss
     ) {
-        // --- This is the custom content wired into the shell ---
         LazyColumn(
-            modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 280.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(savedRobots) { robot ->
@@ -733,7 +1037,11 @@ fun RobotSelectionDialog(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
                         .background(if (isSelected) HudBlue.copy(alpha = 0.1f) else Color.Transparent)
-                        .border(1.dp, if (isSelected) HudBlue else HudBorder.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .border(
+                            width = 1.dp,
+                            color = if (isSelected) HudBlue else HudBorder.copy(alpha = 0.3f),
+                            shape = RoundedCornerShape(12.dp)
+                        )
                         .clickable { selected = robot }
                         .padding(10.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -741,28 +1049,38 @@ fun RobotSelectionDialog(
                     RadioButton(
                         selected = isSelected,
                         onClick = { selected = robot },
-                        colors = RadioButtonDefaults.colors(selectedColor = HudBlue, unselectedColor = HudText.copy(alpha = 0.3f))
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = HudBlue,
+                            unselectedColor = HudText.copy(alpha = 0.3f)
+                        )
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
-                        Text(robot.name, color = if (isSelected) HudBlue else HudText, fontSize = 16.sp)
-
+                        Text(
+                            text = robot.name,
+                            color = if (isSelected) HudBlue else HudText,
+                            fontSize = 16.sp
+                        )
                     }
                 }
             }
         }
     }
 }
-// --- Internal Support Functions ---
+
 private fun saveImageToInternalStorage(context: Context, uri: Uri): String? {
     return try {
         val inputStream = context.contentResolver.openInputStream(uri)
         val file = File(context.filesDir, "robot_thumb_${UUID.randomUUID()}.jpg")
         val outputStream = FileOutputStream(file)
         inputStream?.copyTo(outputStream)
-        inputStream?.close(); outputStream.close()
+        inputStream?.close()
+        outputStream.close()
         file.absolutePath
-    } catch (e: Exception) { e.printStackTrace(); null }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
 }
 
 fun buildTopicOptions(allTopics: List<RosTopicInfo>, preferredTypes: List<String>): List<TopicBinding> {
@@ -772,63 +1090,151 @@ fun buildTopicOptions(allTopics: List<RosTopicInfo>, preferredTypes: List<String
 @Composable
 fun HudTextField(value: String, onValueChange: (String) -> Unit, label: String) {
     OutlinedTextField(
-        value = value, onValueChange = onValueChange,
-        label = { Text(label, color = HudText, fontSize = 11.sp) },
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label, fontSize = 11.sp) },
+        placeholder = {
+            Text(
+                text = "Enter ${label.lowercase()}...",
+                color = HudText.copy(alpha = 0.3f)
+            )
+        },
         textStyle = TextStyle(color = HudText, fontSize = 14.sp),
-        modifier = Modifier.fillMaxWidth().height(54.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(60.dp),
         singleLine = true,
-        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = HudText, unfocusedBorderColor = HudText.copy(alpha = 0.4f), focusedTextColor = HudText, unfocusedTextColor = HudText),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = HudBlue,
+            unfocusedBorderColor = HudText.copy(alpha = 0.4f),
+            focusedTextColor = HudText,
+            unfocusedTextColor = HudText,
+            unfocusedLabelColor = HudBlue,
+            focusedLabelColor = HudBlue,
+            disabledLabelColor = HudBlue
+        ),
         shape = RoundedCornerShape(8.dp)
     )
 }
 
 @Composable
 fun MainMenuPanel(content: @Composable ColumnScope.() -> Unit) {
-    Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
-        Box(modifier = Modifier.fillMaxWidth(0.96f).aspectRatio(1.16f), contentAlignment = Alignment.Center) {
-            Box(modifier = Modifier.matchParentSize().padding(horizontal = 18.dp, vertical = 16.dp).background(Brush.verticalGradient(listOf(Color(0xFF02101A).copy(alpha = 0.05f), Color(0xFF02101A).copy(alpha = 0.16f))), RoundedCornerShape(22.dp)))
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center, modifier = Modifier.matchParentSize().padding(horizontal = 30.dp, vertical = 40.dp), content = content)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.96f)
+                .aspectRatio(1.16f),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .padding(horizontal = 18.dp, vertical = 16.dp)
+                    .background(
+                        brush = Brush.verticalGradient(
+                            listOf(
+                                Color(0xFF02101A).copy(alpha = 0.05f),
+                                Color(0xFF02101A).copy(alpha = 0.16f)
+                            )
+                        ),
+                        shape = RoundedCornerShape(22.dp)
+                    )
+            )
+            Column(
+                modifier = Modifier
+                    .matchParentSize()
+                    .padding(horizontal = 30.dp, vertical = 40.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+                content = content
+            )
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TopicBindingDropdown(title: String, selected: TopicBinding?, options: List<TopicBinding>, placeholder: String, onSelected: (TopicBinding?) -> Unit) {
+fun TopicBindingDropdown(
+    title: String,
+    selected: TopicBinding?,
+    options: List<TopicBinding>,
+    placeholder: String,
+    onSelected: (TopicBinding?) -> Unit
+) {
     var expanded by remember { mutableStateOf(false) }
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded }
+    ) {
         OutlinedTextField(
-            value = selected?.name ?: "", onValueChange = {}, readOnly = true,
-            label = { Text(title, fontSize = 10.sp, color = HudText) },
+            value = selected?.name ?: "",
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(title, fontSize = 10.sp) },
+            placeholder = {
+                Text(
+                    text = placeholder,
+                    fontSize = 14.sp,
+                    color = HudText.copy(alpha = 0.3f)
+                )
+            },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor().fillMaxWidth().height(60.dp),
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth()
+                .height(60.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 unfocusedBorderColor = HudText.copy(alpha = 0.4f),
                 focusedBorderColor = HudBlue,
                 focusedTextColor = HudText,
-                unfocusedTextColor = HudText
+                unfocusedTextColor = HudText,
+                unfocusedLabelColor = HudBlue,
+                focusedLabelColor = HudBlue
             ),
             shape = RoundedCornerShape(8.dp)
         )
         ExposedDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            modifier = Modifier.background(HudSurface).border(1.dp, HudBorder, RoundedCornerShape(4.dp))
+            modifier = Modifier
+                .background(HudSurface)
+                .border(1.dp, HudBorder, RoundedCornerShape(4.dp))
         ) {
             DropdownMenuItem(
-                text = { Text("Not set", color = HudText.copy(alpha = 0.6f)) },
-                onClick = { onSelected(null); expanded = false },
+                text = {
+                    Text("Not set", color = HudText.copy(alpha = 0.6f))
+                },
+                onClick = {
+                    onSelected(null)
+                    expanded = false
+                },
                 colors = MenuDefaults.itemColors(textColor = HudText)
             )
             options.forEach { option ->
                 DropdownMenuItem(
                     text = {
                         Column {
-                            Text(option.name, color = HudText, fontSize = 14.sp)
-                            Text(option.type, color = HudBlue.copy(alpha = 0.8f), fontSize = 10.sp)
+                            Text(
+                                text = option.name,
+                                color = HudText,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = option.type,
+                                color = HudBlue.copy(alpha = 0.8f),
+                                fontSize = 10.sp
+                            )
                         }
                     },
-                    onClick = { onSelected(option); expanded = false },
+                    onClick = {
+                        onSelected(option)
+                        expanded = false
+                    },
                     colors = MenuDefaults.itemColors(textColor = HudText)
                 )
             }
@@ -837,83 +1243,260 @@ fun TopicBindingDropdown(title: String, selected: TopicBinding?, options: List<T
 }
 
 @Composable
-fun ModeEditorRow(mode: RobotMode, onEdit: () -> Unit, onDelete: () -> Unit) {
-    Surface(color = HudText.copy(alpha = 0.1f), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, HudBorder.copy(alpha = 0.3f)), modifier = Modifier.fillMaxWidth()) {
-        Row(modifier = Modifier.padding(start = 15.dp), verticalAlignment = Alignment.CenterVertically) {
+fun ModeEditorRow(
+    mode: RobotMode,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Surface(
+        color = HudText.copy(alpha = 0.0f),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, HudText.copy(alpha = 0.3f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 15.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(mode.label, color = HudText, fontWeight = FontWeight.Bold)
-
+                Text(
+                    text = mode.label,
+                    color = HudText,
+                    fontWeight = FontWeight.Bold
+                )
             }
-            IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, null, tint = HudText) }
-            IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, null, tint = Color.Red) }
+            IconButton(onClick = onEdit) {
+                Icon(Icons.Default.Edit, null, tint = HudText)
+            }
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Default.Delete, null, tint = Color.Red)
+            }
         }
     }
 }
 
 @Composable
-fun RobotListItem(robot: RobotConfig, onEdit: () -> Unit, onDelete: () -> Unit) {
-    Surface(color = HudText.copy(alpha = 0.1f), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, HudBlue), modifier = Modifier.fillMaxWidth()) {
-        Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).background(HudBackground)) {
-                if (robot.thumbnailPath != null) AsyncImage(model = File(robot.thumbnailPath), contentDescription = null, contentScale = ContentScale.Crop)
-                else Icon(Icons.Default.Image, null, modifier = Modifier.align(Alignment.Center), tint = HudText.copy(alpha = 0.2f))
+fun RobotListItem(
+    robot: RobotConfig,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Surface(
+        color = HudText.copy(alpha = 0.0f),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, HudText.copy(alpha = 0.3f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(HudBackground)
+            ) {
+                if (robot.thumbnailPath != null) {
+                    AsyncImage(
+                        model = File(robot.thumbnailPath),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Image,
+                        contentDescription = null,
+                        modifier = Modifier.align(Alignment.Center),
+                        tint = HudText.copy(alpha = 0.2f)
+                    )
+                }
             }
-            Text(robot.name, color = HudText, modifier = Modifier.padding(start = 12.dp).weight(1f))
-            IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, null, tint = HudText.copy(alpha = 0.7f)) }
-            IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, null, tint = Color.Red.copy(alpha = 0.7f)) }
+            Text(
+                text = robot.name,
+                color = HudText,
+                modifier = Modifier
+                    .padding(start = 12.dp)
+                    .weight(1f)
+            )
+            IconButton(onClick = onEdit) {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = null,
+                    tint = HudText.copy(alpha = 0.7f)
+                )
+            }
+            IconButton(onClick = onDelete) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = null,
+                    tint = Color.Red.copy(alpha = 0.7f)
+                )
+            }
         }
     }
 }
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun MjpegWebView(url: String, onLoadingStateChanged: (loaded: Boolean, error: String?) -> Unit, onUserInteraction: () -> Unit, modifier: Modifier = Modifier) {
-    AndroidView(factory = { context ->
-        WebView(context).apply {
-            layoutParams = android.view.ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
-            setBackgroundColor(android.graphics.Color.BLACK)
-            webViewClient = object : WebViewClient() {
-                override fun onPageFinished(view: WebView?, url: String?) { onLoadingStateChanged(true, null) }
-                override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) { if (request?.isForMainFrame == true) onLoadingStateChanged(false, error?.description?.toString()) }
+fun MjpegWebView(
+    url: String,
+    onLoadingStateChanged: (loaded: Boolean, error: String?) -> Unit,
+    onUserInteraction: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    AndroidView(
+        factory = { context ->
+            WebView(context).apply {
+                layoutParams = android.view.ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+                setBackgroundColor(android.graphics.Color.BLACK)
+                webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        onLoadingStateChanged(true, null)
+                    }
+                    override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
+                        if (request?.isForMainFrame == true) {
+                            onLoadingStateChanged(false, error?.description?.toString())
+                        }
+                    }
+                }
+                settings.javaScriptEnabled = true
+                setOnTouchListener { _, _ ->
+                    onUserInteraction()
+                    false
+                }
+                loadUrl(url)
             }
-            settings.javaScriptEnabled = true
-            setOnTouchListener { _, _ -> onUserInteraction(); false }
-            loadUrl(url)
-        }
-    }, update = { it.loadUrl(url) }, modifier = modifier)
+        },
+        update = { it.loadUrl(url) },
+        modifier = modifier
+    )
 }
 
 @Composable
-fun VideoFeedContainer(modifier: Modifier = Modifier, hatchOpen: Boolean, errorText: String?, videoContent: @Composable BoxScope.() -> Unit) {
-    Box(modifier = modifier.clip(RoundedCornerShape(16.dp)).background(Color.Black).border(1.dp, HudBorder.copy(alpha = 0.5f), RoundedCornerShape(16.dp))) {
+fun VideoFeedContainer(
+    modifier: Modifier = Modifier,
+    hatchOpen: Boolean,
+    errorText: String?,
+    videoContent: @Composable BoxScope.() -> Unit
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.Black)
+            .border(1.dp, HudBorder.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+    ) {
         videoContent()
-        HatchOverlay(modifier = Modifier.matchParentSize(), isOpen = hatchOpen)
-        if (!errorText.isNullOrBlank() && !hatchOpen) { Text("VIDEO OFFLINE", color = HudBlue, modifier = Modifier.align(Alignment.Center), fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+        HatchOverlay(
+            modifier = Modifier.matchParentSize(),
+            isOpen = hatchOpen
+        )
+        if (!errorText.isNullOrBlank() && !hatchOpen) {
+            Text(
+                text = "VIDEO OFFLINE",
+                color = HudBlue,
+                modifier = Modifier.align(Alignment.Center),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
     }
 }
 
+@SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
-fun HatchOverlay(modifier: Modifier = Modifier, isOpen: Boolean) {
-    val openFraction by animateFloatAsState(targetValue = if (isOpen) 1f else 0f, animationSpec = tween(850, easing = FastOutSlowInEasing))
-    Box(modifier = modifier) {
-        val offset = openFraction * 1.08f
-        Box(modifier = Modifier.fillMaxHeight().fillMaxWidth(0.5f).align(Alignment.CenterStart).graphicsLayer { translationX = -size.width * offset }.background(Brush.horizontalGradient(listOf(HatchSteelDark, HatchSteel))))
-        Box(modifier = Modifier.fillMaxHeight().fillMaxWidth(0.5f).align(Alignment.CenterEnd).graphicsLayer { translationX = size.width * offset }.background(Brush.horizontalGradient(listOf(HatchSteel, HatchSteelDark))))
+fun HatchOverlay(
+    modifier: Modifier = Modifier,
+    isOpen: Boolean
+) {
+    val openFraction by animateFloatAsState(
+        targetValue = if (isOpen) 1f else 0f,
+        animationSpec = tween(850, easing = FastOutSlowInEasing),
+        label = "hatch_anim"
+    )
+
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val halfWidth = maxWidth / 2
+        val translationAmount = openFraction * (constraints.maxWidth.toFloat() / 2f)
+
+        // Left door
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(halfWidth)
+                .align(Alignment.CenterStart)
+                .graphicsLayer { translationX = -translationAmount }
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.hatch_door_left),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.FillBounds
+            )
+        }
+
+        // Right door
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(halfWidth)
+                .align(Alignment.CenterEnd)
+                .graphicsLayer { translationX = translationAmount }
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.hatch_door_right),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.FillBounds
+            )
+        }
     }
 }
-
 @Composable
-fun SettingsDialog(savedRobots: List<RobotConfig>, currentRobot: RobotConfig, initialHaptics: Boolean, onDismiss: () -> Unit, onSave: (RobotConfig, Boolean) -> Unit, onDisconnect: () -> Unit, extraContent: @Composable () -> Unit) {
+fun SettingsDialog(
+    savedRobots: List<RobotConfig>,
+    currentRobot: RobotConfig,
+    initialHaptics: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (RobotConfig, Boolean) -> Unit,
+    onDisconnect: () -> Unit,
+    extraContent: @Composable () -> Unit
+) {
     var haptics by remember { mutableStateOf(initialHaptics) }
     Dialog(onDismissRequest = onDismiss) {
-        Surface(color = HudBackground, shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, HudBlue)) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("SYSTEM CONFIG", color = HudBlue, fontWeight = FontWeight.Bold)
+        Surface(
+            color = HudBackground,
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, HudBlue)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "SYSTEM CONFIG",
+                    color = HudBlue,
+                    fontWeight = FontWeight.Bold
+                )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = haptics, onCheckedChange = { haptics = it }, colors = CheckboxDefaults.colors(checkedColor = HudBlue))
-                    Text("ENABLE HAPTICS", color = HudText, fontSize = 12.sp)
+                    Checkbox(
+                        checked = haptics,
+                        onCheckedChange = { haptics = it },
+                        colors = CheckboxDefaults.colors(checkedColor = HudBlue)
+                    )
+                    Text(
+                        text = "ENABLE HAPTICS",
+                        color = HudText,
+                        fontSize = 12.sp
+                    )
                 }
-                Button(onClick = { onSave(currentRobot, haptics) }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = HudBlue)) { Text("APPLY", color = HudBackground) }
+                Button(
+                    onClick = { onSave(currentRobot, haptics) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = HudBlue)
+                ) {
+                    Text("APPLY", color = HudBackground)
+                }
                 extraContent()
             }
         }
@@ -921,21 +1504,68 @@ fun SettingsDialog(savedRobots: List<RobotConfig>, currentRobot: RobotConfig, in
 }
 
 @Composable
-fun ModeEditDialog(initialMode: RobotMode?, onDismiss: () -> Unit, onSave: (RobotMode) -> Unit) {
+fun ModeEditDialog(
+    initialMode: RobotMode?,
+    onDismiss: () -> Unit,
+    onSave: (RobotMode) -> Unit
+) {
     var label by remember { mutableStateOf(initialMode?.label ?: "") }
     var cmd by remember { mutableStateOf(initialMode?.command ?: "") }
     Dialog(onDismissRequest = onDismiss) {
-        Surface(color = HudBackground, shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, HudBorder)) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Surface(
+            color = HudBackground,
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, HudBorder)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 HudTextField(label, { label = it }, "LABEL")
                 HudTextField(cmd, { cmd = it }, "COMMAND")
-                Button(onClick = { onSave(RobotMode(label, cmd)) }, modifier = Modifier.fillMaxWidth()) { Text("SAVE") }
+                Button(
+                    onClick = { onSave(RobotMode(label, cmd)) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("SAVE")
+                }
             }
         }
     }
 }
 
-// --- Previews ---
+// --- PREVIEWS ---
+
+@Preview(name = "Hatch Animation Test", showBackground = true, widthDp = 400, heightDp = 250)
+@Composable
+fun PreviewHatchMovement() {
+    var doorOpen by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        while(true) {
+            delay(2000)
+            doorOpen = !doorOpen
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.DarkGray),
+        contentAlignment = Alignment.Center
+    ) {
+        Text("CAMERA SENSOR", color = Color.White)
+
+        HatchOverlay(isOpen = doorOpen)
+
+        Text(
+            text = if (doorOpen) "OPENING..." else "CLOSING...",
+            modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+            color = HudBlue,
+            fontSize = 10.sp
+        )
+    }
+}
 
 @Preview(showBackground = true, name = "1. Saved Robots List")
 @Composable
@@ -1004,7 +1634,11 @@ fun PreviewRobotSelectionDialog() {
 @Composable
 fun PreviewModeEditorRow() {
     JaxGamepadTheme {
-        Box(modifier = Modifier.padding(16.dp).background(HudBackground)) {
+        Box(
+            modifier = Modifier
+                .padding(16.dp)
+                .background(HudBackground)
+        ) {
             ModeEditorRow(
                 mode = RobotMode("WALK", "walk"),
                 onEdit = {},

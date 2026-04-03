@@ -10,39 +10,15 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Videocam
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,10 +30,13 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.jaxgamepad.Black
+import com.example.jaxgamepad.HudBlue
 import com.example.jaxgamepad.R
 import com.example.jaxgamepad.RobotMode
 import kotlin.math.min
@@ -65,7 +44,10 @@ import kotlin.math.sqrt
 
 private val HudText = Color(0xFFE6EEF5)
 private val HudBlue = Color(0xFF00E5FF)
-private val HudBorder = Color(0xFF1A3A4A)
+private val HudBorder = Color(0xFF27719a)
+private val Hudglow = Color(0xFF4db9db)
+
+
 
 @Composable
 fun JaxHudScreen(
@@ -98,25 +80,20 @@ fun JaxHudScreen(
         )
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color(0xFF050B10))
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Image(
+            painter = painterResource(id = R.drawable.hud_background),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.FillBounds
+        )
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 22.dp, top = 8.dp, end = 22.dp, bottom = 4.dp)
+                .padding(start = 22.dp, top = 8.dp, end = 22.dp, bottom = 0.dp)
         ) {
             HudTopBar(robotName = robotName, batteryPercent = batteryPercent)
 
-            HorizontalDivider(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                thickness = 1.dp,
-                color = HudBorder.copy(alpha = 0.3f)
-            )
 
             Spacer(Modifier.height(4.dp))
 
@@ -152,15 +129,15 @@ fun JaxHudScreen(
 
                 Column(
                     modifier = Modifier
-                        .weight(0.5f)
+                        .weight(.66f)
                         .fillMaxHeight(),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
+                    verticalArrangement = Arrangement.Top
                 ) {
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .aspectRatio(1.77f)
+                            .aspectRatio(1.9f)
                             .border(1.dp, HudBorder.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                             .clip(RoundedCornerShape(12.dp)),
                         color = Color.Black
@@ -292,38 +269,55 @@ private fun knownModeIcon(command: String): Int? {
 @Composable
 private fun HudTopBar(robotName: String, batteryPercent: Int) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(40.dp)
-            .padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+        modifier = Modifier.fillMaxWidth(),
     ) {
+        Spacer(Modifier.weight(1f))
+
         Text(
             text = robotName,
             color = HudText,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.SemiBold
+            fontSize = 30.sp,
+            fontWeight = FontWeight.SemiBold,
+            fontFamily = FontFamily.Monospace // Applied new font
         )
 
         Spacer(Modifier.weight(1f))
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(45.dp),
+        verticalAlignment = Alignment.Bottom
+    ) {
+        Box(modifier = Modifier.weight(1f))
 
         Text(
-            text = "ROS2 LINK: LIVE  |  CTRL: READY",
+            text = "ROS Link: Connected",
             color = HudText,
             fontSize = 12.sp,
-            letterSpacing = 0.5.sp
+            fontWeight = FontWeight.Normal,
+            fontFamily = FontFamily.Monospace, // Applied new font
+            modifier = Modifier
+                .wrapContentWidth()
+                .align(Alignment.CenterVertically)
         )
 
-        Spacer(Modifier.weight(1f))
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(
                 text = "BAT $batteryPercent%",
                 color = HudText,
-                fontSize = 13.sp
+                fontSize = 13.sp,
+                fontFamily = FontFamily.Monospace // Applied new font
             )
             Spacer(Modifier.width(6.dp))
-            BatteryGlyph(level = batteryPercent / 100f)
+            BatteryGlyph(
+                level = batteryPercent / 100f,
+            )
         }
     }
 }
@@ -354,7 +348,8 @@ private fun StatusRow(label: String, color: Color, pulse: Boolean) {
             text = label,
             color = HudText,
             fontSize = 10.sp,
-            fontWeight = FontWeight.Medium
+            fontWeight = FontWeight.Medium,
+            fontFamily = FontFamily.Monospace // Applied new font
         )
     }
 }
@@ -468,6 +463,7 @@ private fun TextModeButton(
                 color = Color.White,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace, // Applied new font
                 letterSpacing = 1.sp
             )
         }
@@ -530,30 +526,30 @@ fun HudJoystick(
             val innerR = outerR * 0.35f
 
             drawCircle(
-                color = HudBorder.copy(alpha = 0.4f),
+                color = HudBorder.copy(alpha = 0.9f),
                 radius = outerR,
                 center = c,
-                style = Stroke(width = 1.dp.toPx())
+                style = Stroke(width = 3.dp.toPx())
             )
 
             drawCircle(
-                color = Color(0x1A5D7388),
+                color = Black.copy(alpha = 0.5f),
                 radius = outerR,
                 center = c
             )
 
             rotate(45f, c) {
                 drawLine(
-                    color = HudBorder.copy(alpha = 0.3f),
+                    color = HudBorder.copy(alpha = 0.9f),
                     start = Offset(c.x - outerR, c.y),
                     end = Offset(c.x + outerR, c.y),
-                    strokeWidth = 1.dp.toPx()
+                    strokeWidth = 2.dp.toPx()
                 )
                 drawLine(
-                    color = HudBorder.copy(alpha = 0.3f),
+                    color = HudBorder.copy(alpha = 0.9f),
                     start = Offset(c.x, c.y - outerR),
                     end = Offset(c.x, c.y + outerR),
-                    strokeWidth = 1.dp.toPx()
+                    strokeWidth = 2.dp.toPx()
                 )
             }
 
@@ -574,22 +570,22 @@ fun HudJoystick(
                 c.y + dragOffset.y * (outerR * 0.8f)
             )
             drawCircle(
-                color = HudBlue.copy(alpha = 0.9f),
-                radius = 6.dp.toPx(),
+                color = Hudglow.copy(alpha = 0.9f),
+                radius = 15.dp.toPx(),
                 center = knobCenter
             )
             drawCircle(
-                color = HudBlue.copy(alpha = 0.5f),
+                color = Hudglow.copy(alpha = 0.3f),
                 radius = 10.dp.toPx(),
                 center = knobCenter,
-                style = Stroke(width = 2.dp.toPx())
+                style = Stroke(width = 30.dp.toPx())
             )
         }
 
         Icon(
             imageVector = Icons.Default.KeyboardArrowUp,
             contentDescription = null,
-            tint = HudText.copy(alpha = 0.6f),
+            tint = HudText,
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .padding(top = 18.dp)
@@ -598,7 +594,7 @@ fun HudJoystick(
         Icon(
             imageVector = Icons.Default.KeyboardArrowDown,
             contentDescription = null,
-            tint = HudText.copy(alpha = 0.6f),
+            tint = HudText,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 18.dp)
@@ -607,7 +603,7 @@ fun HudJoystick(
         Icon(
             imageVector = Icons.Default.KeyboardArrowLeft,
             contentDescription = null,
-            tint = HudText.copy(alpha = 0.6f),
+            tint = HudText,
             modifier = Modifier
                 .align(Alignment.CenterStart)
                 .padding(start = 18.dp)
@@ -616,7 +612,7 @@ fun HudJoystick(
         Icon(
             imageVector = Icons.Default.KeyboardArrowRight,
             contentDescription = null,
-            tint = HudText.copy(alpha = 0.6f),
+            tint = HudText,
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .padding(end = 18.dp)
@@ -625,7 +621,7 @@ fun HudJoystick(
     }
 }
 
-@Preview(widthDp = 1280, heightDp = 720, showBackground = true)
+@Preview(widthDp = 891, heightDp = 411, showBackground = true)
 @Composable
 private fun JaxHudScreenPreview() {
     JaxHudScreen(
