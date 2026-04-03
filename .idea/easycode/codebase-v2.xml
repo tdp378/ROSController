@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="com.obiscr.chatgpt.settings.EasyCodeState">
+    <option name="projectFiles" value="$PROJECT_DIR$/app/src/androidTest/java/com/example/jaxgamepad/ExampleInstrumentedTest.kt;C:/Users/tdp37/AndroidStudioProjects/JacGamepad/app/src/main/java/com/example/jaxgamepad/ui/theme/Color.kt;C:/Users/tdp37/AndroidStudioProjects/JacGamepad/app/src/main/java/com/example/jaxgamepad/ui/theme/Theme.kt;C:/Users/tdp37/AndroidStudioProjects/JacGamepad/app/src/main/java/com/example/jaxgamepad/ui/theme/Type.kt;C:/Users/tdp37/AndroidStudioProjects/JacGamepad/app/src/main/java/com/example/jaxgamepad/ui/JaxHudScreen.kt;C:/Users/tdp37/AndroidStudioProjects/JacGamepad/app/src/main/java/com/example/jaxgamepad/MainActivity.kt;C:/Users/tdp37/AndroidStudioProjects/JacGamepad/app/src/test/java/com/example/jaxgamepad/ExampleUnitTest.kt;C:/Users/tdp37/AndroidStudioProjects/JacGamepad/app/build.gradle.kts;C:/Users/tdp37/AndroidStudioProjects/JacGamepad/build.gradle.kts;C:/Users/tdp37/AndroidStudioProjects/JacGamepad/settings.gradle.kts" />
+  </component>
+</project>
