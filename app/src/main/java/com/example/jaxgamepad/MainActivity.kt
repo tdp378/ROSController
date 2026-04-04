@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.net.Uri
+import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
@@ -51,6 +52,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -68,6 +70,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
+import java.net.Inet4Address
+import java.net.NetworkInterface
 import java.util.UUID
 
 // --- UI Constants ---
@@ -77,6 +81,29 @@ val HudBackground = Color(0xFF050B10)
 val HudSurface = Color(0xFF0D1B26)
 val HudText = Color(0xFFE6EEF5)
 val Black = Color(0xFF000000)
+
+// --- Network Helper Function ---
+fun getNetworkDetails(context: Context): Pair<String, String> {
+    val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+
+    val ipAddress = try {
+        NetworkInterface.getNetworkInterfaces().toList()
+            .flatMap { it.inetAddresses.toList() }
+            .filter { !it.isLoopbackAddress && it is Inet4Address }
+            .map { it.hostAddress ?: "0.0.0.0" }
+            .firstOrNull() ?: "0.0.0.0"
+    } catch (e: Exception) { "0.0.0.0" }
+
+    val info = wifiManager.connectionInfo
+    val ssid = if (info != null && info.networkId != -1) {
+        val name = info.ssid.removeSurrounding("\"")
+        if (name == "<unknown ssid>") "WIFI_CONNECTED" else name
+    } else {
+        "NO_LINK"
+    }
+
+    return ssid to ipAddress
+}
 
 @Composable
 fun CyberDialog(
@@ -232,6 +259,46 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
     val context = LocalContext.current
     val robotManager = remember { RobotManager(context) }
 
+    // Persistent Terminal State
+    var terminalText by remember { mutableStateOf("") }
+    var hasBooted by remember { mutableStateOf(false) }
+
+    val networkInfo by produceState(initialValue = "SCANNING" to "0.0.0.0") {
+        while(true) {
+            value = getNetworkDetails(context)
+            delay(5000)
+        }
+    }
+
+    // Single Boot Sequence
+    LaunchedEffect(Unit) {
+        if (!hasBooted) {
+            val script = "> BOOTING ROS CONTROLLER..." +
+                    "\n|> " +
+                    "\n|> WIFI SSID: ${networkInfo.first}" +
+                    "\n|> IP ADDR: ${networkInfo.second}" +
+                    "\n|> " +
+                    "\n|> STATUS: SYSTEM_READY_"
+            val chunks = script.split("|")
+
+            chunks.forEachIndexed { index, chunk ->
+                chunk.forEach { char ->
+                    terminalText += char
+                    delay(30)
+                }
+                if (index < chunks.size - 1) delay(1500)
+            }
+            hasBooted = true
+        }
+    }
+
+    // Silent updates after boot
+    LaunchedEffect(networkInfo) {
+        if (hasBooted) {
+            terminalText = "> BOOTING JAX_OS...\n> LINK: ${networkInfo.first}\n> ADDR: ${networkInfo.second}\n> STATUS: SYSTEM_READY_"
+        }
+    }
+
     var savedRobots by remember {
         val loaded = robotManager.loadRobots()
         val cleaned = if (loaded.isEmpty() || loaded.any { it.name.lowercase() == "jax-1" }) {
@@ -278,6 +345,7 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
         Screen.Menu -> StartMenuScreen(
             ros = ros,
             savedRobots = savedRobots,
+            terminalText = terminalText,
             onLaunchGamepad = { robot ->
                 currentRobot = robot
                 currentScreen = Screen.Gamepad
@@ -1040,6 +1108,7 @@ fun DiscoverTopicsButton(
 fun StartMenuScreen(
     ros: RosbridgeClient,
     savedRobots: List<RobotConfig>,
+    terminalText: String,
     onLaunchGamepad: (RobotConfig) -> Unit,
     onLaunchSetup: () -> Unit
 ) {
@@ -1085,23 +1154,57 @@ fun StartMenuScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding(),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(modifier = Modifier.weight(0.52f))
+            Spacer(modifier = Modifier.weight(1f))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.92f)
+                    .aspectRatio(1.5f)
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.terminal_box),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit
+                )
+
+                Column(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .padding(start = 58.dp, top = 28.dp, end = 54.dp, bottom = 24.dp)
+                ) {
+                    Text(
+                        text = terminalText,
+                        color = Color(0xFF8FE9FF),
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.sp,
+                        letterSpacing = 1.sp,
+                        lineHeight = 16.sp
+                    )
+                }
+            }
 
             MainMenuPanel {
                 CyberButton(
                     onClick = {
-                        if (savedRobots.isEmpty()) showNoRobotWarning = true
-                        else showRobotSelectDialog = true
+                        if (savedRobots.isEmpty()) {
+                            showNoRobotWarning = true
+                        } else {
+                            showRobotSelectDialog = true
+                        }
                     },
-                    modifier = Modifier.fillMaxWidth(.85f)
+                    modifier = Modifier.fillMaxWidth(1f)
                 ) {
                     Image(
                         painter = painterResource(id = R.drawable.launch_controller),
                         contentDescription = null,
-                        modifier = Modifier.fillMaxWidth().alpha(if (savedRobots.isEmpty()) 0.5f else 1f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .alpha(if (savedRobots.isEmpty()) 0.5f else 1f),
                         contentScale = ContentScale.Fit
                     )
                 }
@@ -1110,7 +1213,7 @@ fun StartMenuScreen(
 
                 CyberButton(
                     onClick = onLaunchSetup,
-                    modifier = Modifier.fillMaxWidth(.85f)
+                    modifier = Modifier.fillMaxWidth(0.75f)
                 ) {
                     Image(
                         painter = painterResource(id = R.drawable.robot_setup),
@@ -1120,7 +1223,7 @@ fun StartMenuScreen(
                     )
                 }
             }
-            Spacer(modifier = Modifier.weight(0.12f))
+            Spacer(modifier = Modifier.weight(.2f))
         }
     }
 }
@@ -1275,28 +1378,15 @@ fun MainMenuPanel(content: @Composable ColumnScope.() -> Unit) {
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth(0.96f)
-                .aspectRatio(1.16f),
+                .fillMaxWidth()
+                .aspectRatio(1.5f),
             contentAlignment = Alignment.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .padding(horizontal = 18.dp, vertical = 16.dp)
-                    .background(
-                        brush = Brush.verticalGradient(
-                            listOf(
-                                Color(0xFF02101A).copy(alpha = 0.05f),
-                                Color(0xFF02101A).copy(alpha = 0.16f)
-                            )
-                        ),
-                        shape = RoundedCornerShape(22.dp)
-                    )
-            )
+        )
+        {
             Column(
                 modifier = Modifier
                     .matchParentSize()
-                    .padding(horizontal = 30.dp, vertical = 40.dp),
+                    .padding(horizontal = 8.dp, vertical = 40.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
                 content = content
@@ -1511,7 +1601,6 @@ fun MjpegWebView(
                     override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
                         if (request?.isForMainFrame == true) {
                             onLoadingStateChanged(false, error?.description?.toString())
-                            // Kill the default Android error icon
                             view?.visibility = android.view.View.INVISIBLE
                         }
                     }
@@ -1543,7 +1632,6 @@ fun VideoFeedContainer(
             .background(Color.Black)
             .border(1.dp, HudBorder.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
     ) {
-        // This is where the WebView sits "behind" the doors
         videoContent()
 
         if (hatchOpen) {
@@ -1585,13 +1673,11 @@ fun VideoFeedContainer(
             }
         }
 
-        // The Hatch doors sit on the very top layer
         HatchOverlay(
             modifier = Modifier.matchParentSize(),
             isOpen = hatchOpen
         )
 
-        // Overlay text if it's strictly offline/error before opening
         if (!errorText.isNullOrBlank() && !hatchOpen) {
             Text(
                 text = "VIDEO SYSTEM OFFLINE",
@@ -1620,7 +1706,6 @@ fun HatchOverlay(
         val halfWidth = maxWidth / 2
         val translationAmount = openFraction * (constraints.maxWidth.toFloat() / 2f)
 
-        // Left door
         Box(
             modifier = Modifier
                 .fillMaxHeight()
@@ -1636,7 +1721,6 @@ fun HatchOverlay(
             )
         }
 
-        // Right door
         Box(
             modifier = Modifier
                 .fillMaxHeight()
@@ -1755,5 +1839,35 @@ fun ModeEditDialog(
             HudTextField(value = label, onValueChange = { label = it }, label = "LABEL (e.g. WALK)")
             HudTextField(value = cmd, onValueChange = { cmd = it }, label = "ROS COMMAND (e.g. walk)")
         }
+    }
+}
+
+@Preview(showBackground = true, widthDp = 412, heightDp = 892)
+@Composable
+fun StartMenuScreenPreview() {
+    val sampleRobots = listOf(
+        RobotConfig(
+            name = "ROSbot (Demo)",
+            rosAddress = "192.168.1.100",
+            videoUrl = "http://192.168.1.100:8080/stream?topic=/camera/image_raw",
+            thumbnailPath = "demo_thumb",
+            modes = listOf(
+                RobotMode("STAND", "stand"),
+                RobotMode("WALK", "walk"),
+                RobotMode("SIT", "sit"),
+                RobotMode("LAY", "lay"),
+                RobotMode("SHAKE", "shake"),
+                RobotMode("WAVE", "wave")
+            )
+        )
+    )
+    JaxGamepadTheme {
+        StartMenuScreen(
+            ros = RosbridgeClient(),
+            savedRobots = sampleRobots,
+            terminalText = "> BOOTING JAX_OS...\n> LINK: WIFI_CONNECTED\n> ADDR: 192.168.1.5\n> STATUS: SYSTEM_READY_",
+            onLaunchGamepad = {},
+            onLaunchSetup = {}
+        )
     }
 }
