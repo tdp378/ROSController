@@ -64,6 +64,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import coil.compose.AsyncImage
 import com.example.jaxgamepad.ui.JaxHudScreen
+import com.example.jaxgamepad.ui.HudIndicator
 import com.example.jaxgamepad.ui.theme.JaxGamepadTheme
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -81,8 +82,9 @@ val HudBackground = Color(0xFF050B10)
 val HudSurface = Color(0xFF0D1B26)
 val HudText = Color(0xFFE6EEF5)
 val Black = Color(0xFF000000)
+val TerminalCyan = Color(0xFF8FE9FF)
 
-// --- Updated Network Helper Function ---
+// --- Network Helper Function ---
 fun getNetworkDetails(context: Context): Pair<String, String> {
     val ipAddress = try {
         NetworkInterface.getNetworkInterfaces().toList()
@@ -102,10 +104,32 @@ fun getNetworkDetails(context: Context): Pair<String, String> {
 }
 
 @Composable
+fun CyberTerminalBox(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Box(modifier = modifier.fillMaxWidth().aspectRatio(1.8f)) {
+        Image(
+            painter = painterResource(R.drawable.terminal_box),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Fit
+        )
+        Column(
+            modifier = Modifier
+                .matchParentSize()
+                .padding(start = 54.dp, top = 26.dp, end = 50.dp, bottom = 22.dp),
+            content = content
+        )
+    }
+}
+
+@Composable
 fun CyberDialog(
     show: Boolean,
     title: String,
     confirmText: String = "LAUNCH ▶",
+    useTerminalLook: Boolean = false,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     content: @Composable ColumnScope.() -> Unit
@@ -149,7 +173,13 @@ fun CyberDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                content()
+                if (useTerminalLook) {
+                    CyberTerminalBox {
+                        content()
+                    }
+                } else {
+                    content()
+                }
 
                 Spacer(modifier = Modifier.height(20.dp))
 
@@ -292,7 +322,6 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
                     "\n> " +
                     "\n> LINK: ${networkInfo.first}" +
                     "\n> ADDR: ${networkInfo.second}" +
-                    "\n> " +
                     "\n> STATUS: SYSTEM_READY_"
         }
     }
@@ -399,6 +428,11 @@ fun JaxDriverScreen(
     var moveY by remember { mutableStateOf(0.0) }
     var turnZ by remember { mutableStateOf(0.0) }
     var showSettings by remember { mutableStateOf(false) }
+    var showTerminateVerify by remember { mutableStateOf(false) }
+
+    var activeIndicators by remember {
+        mutableStateOf(setOf(HudIndicator.ROS_LINK, HudIndicator.MOTORS, HudIndicator.IMU, HudIndicator.CAMERA, HudIndicator.BATTERY, HudIndicator.CPU))
+    }
 
     var videoLoadedManually by remember(currentRobot.name) { mutableStateOf(false) }
     var videoError by remember(currentRobot.videoUrl) { mutableStateOf<String?>(null) }
@@ -437,6 +471,10 @@ fun JaxDriverScreen(
             savedRobots = savedRobots,
             currentRobot = currentRobot,
             initialHaptics = hapticsEnabled,
+            activeIndicators = activeIndicators,
+            onToggleIndicator = { ind ->
+                activeIndicators = if (activeIndicators.contains(ind)) activeIndicators - ind else activeIndicators + ind
+            },
             onDismiss = {
                 showSettings = false
                 reHideSystemBars()
@@ -452,11 +490,34 @@ fun JaxDriverScreen(
         )
     }
 
+    if (showTerminateVerify) {
+        CyberDialog(
+            show = true,
+            title = "CONFIRM TERMINATION",
+            confirmText = "TERMINATE",
+            onConfirm = {
+                showTerminateVerify = false
+                onBackToMenu()
+            },
+            onDismiss = {
+                showTerminateVerify = false
+                reHideSystemBars()
+            }
+        ) {
+            Text(
+                "Are you sure you want to terminate the current session and return to the main menu?",
+                color = HudText,
+                fontSize = 14.sp
+            )
+        }
+    }
+
     JaxHudScreen(
         robotName = currentRobot.name,
         batteryPercent = ros.lastBatteryPercent ?: 0,
         selectedMode = ros.lastModeText ?: currentRobot.modes.firstOrNull()?.command ?: "walk",
         modes = currentRobot.modes,
+        enabledIndicators = activeIndicators,
         leftJoystickValue = moveX.toFloat() to moveY.toFloat(),
         rightJoystickValue = turnZ.toFloat() to 0f,
         videoActive = videoButtonActive,
@@ -475,6 +536,7 @@ fun JaxDriverScreen(
         },
         onModeSelected = { mode -> ros.publishMode(currentRobot, mode) },
         onSettingsClick = { showSettings = true },
+        onTerminateClick = { showTerminateVerify = true },
         videoFeed = {
             VideoFeedContainer(
                 modifier = Modifier.fillMaxSize(),
@@ -517,8 +579,9 @@ fun RobotSetupScreen(
     var selectedTabOrStep by remember { mutableIntStateOf(initialSelectedTabOrStep) }
     var maxStepReached by remember(isAdding) { mutableIntStateOf(initialSelectedTabOrStep) }
 
+    val hasNoUserRobots = savedRobots.size <= 1 && savedRobots.any { it.name.contains("Demo", ignoreCase = true) }
     var showWelcomeDialog by remember(savedRobots) {
-        mutableStateOf(savedRobots.size == 1 && savedRobots.first().name.contains("ROSbot"))
+        mutableStateOf(hasNoUserRobots)
     }
 
     CyberDialog(
@@ -532,7 +595,7 @@ fun RobotSetupScreen(
         onDismiss = { showWelcomeDialog = false }
     ) {
         Text(
-            "We have provided you with a sample robot (ROSbot) to test the UI. Configure your own robot to realize the full functionality of the controller.",
+            text = "We have provided you with a sample robot (ROSbot) to test the UI. Configure your own robot to realize the full functionality of the controller.",
             color = HudText,
             fontSize = 14.sp
         )
@@ -640,7 +703,15 @@ fun RobotSetupScreen(
                     )
 
                     IconButton(
-                        onClick = { showRosRequirements = true },
+                        onClick = {
+                            if (hasNoUserRobots) {
+                                showRosRequirements = true
+                            } else {
+                                isAdding = true
+                                selectedTabOrStep = 0
+                                maxStepReached = 0
+                            }
+                        },
                         modifier = Modifier
                             .background(HudBlue.copy(alpha = 0.1f), CircleShape)
                             .border(1.dp, HudBlue.copy(alpha = 0.4f), CircleShape)
@@ -1177,7 +1248,7 @@ fun StartMenuScreen(
                 ) {
                     Text(
                         text = terminalText,
-                        color = Color(0xFF8FE9FF),
+                        color = TerminalCyan,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 10.sp,
                         letterSpacing = 1.sp,
@@ -1638,33 +1709,33 @@ fun VideoFeedContainer(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 val primaryMsg = if (videoUrl.isNotBlank()) "SIGNAL LINK ERROR" else "NO VIDEO FEED CONFIGURED"
-                val secondaryMsg = if (videoUrl.isNotBlank()) "CHECK NETWORK STATUS" else "HARDWARE LINK REQUIRED"
+                val secondaryMsg = if (videoUrl.isNotBlank()) "CHECK NETWORK STATUS" else "SERVER URL REQUIRED"
 
                 Icon(
                     imageVector = if (videoUrl.isNotBlank()) Icons.Default.SignalWifiStatusbarConnectedNoInternet4 else Icons.Default.VideocamOff,
                     contentDescription = null,
                     tint = HudBlue.copy(alpha = 0.5f),
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(42.dp)
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = primaryMsg,
                     color = HudBlue,
-                    fontSize = 10.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp
                 )
                 Text(
                     text = secondaryMsg,
                     color = HudBlue.copy(alpha = 0.6f),
-                    fontSize = 8.sp
+                    fontSize = 10.sp
                 )
                 if (videoUrl.isNotBlank()) {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = videoUrl,
                         color = HudText.copy(alpha = 0.4f),
-                        fontSize = 8.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Light
                     )
                 }
@@ -1741,6 +1812,8 @@ fun SettingsDialog(
     savedRobots: List<RobotConfig>,
     currentRobot: RobotConfig,
     initialHaptics: Boolean,
+    activeIndicators: Set<HudIndicator>,
+    onToggleIndicator: (HudIndicator) -> Unit,
     onDismiss: () -> Unit,
     onSave: (RobotConfig, Boolean) -> Unit,
     onDisconnect: () -> Unit,
@@ -1755,7 +1828,11 @@ fun SettingsDialog(
         onConfirm = { onSave(currentRobot, haptics) },
         onDismiss = onDismiss
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // GLOBAL CONFIG
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -1777,33 +1854,88 @@ fun SettingsDialog(
                 Text(
                     text = "ENABLE HAPTIC FEEDBACK",
                     color = HudText,
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
 
-            CyberButton(
-                onClick = onBackToMenu,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(45.dp)
+            Text(
+                text = "HUD INDICATOR VISIBILITY",
+                color = HudBlue,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
+
+            // COMPACT GRID LAYOUT
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Box(
+                // LEFT COLUMN (LEDs)
+                Column(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .border(1.dp, Color.Red.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
-                        .background(Color.Red.copy(alpha = 0.05f), RoundedCornerShape(10.dp)),
-                    contentAlignment = Alignment.Center
+                        .weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(HudBlue.copy(alpha = 0.05f))
+                        .border(1.dp, HudBlue.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                        .padding(vertical = 2.dp)
                 ) {
-                    Text(
-                        text = "TERMINATE SESSION",
-                        color = Color.Red,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp
-                    )
+                    val leds = listOf(HudIndicator.ROS_LINK, HudIndicator.MOTORS, HudIndicator.IMU, HudIndicator.CAMERA)
+                    leds.forEach { indicator ->
+                        IndicatorToggleRow(indicator, activeIndicators, onToggleIndicator)
+                    }
+                }
+
+                // RIGHT COLUMN (TELEMETRY)
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(HudBlue.copy(alpha = 0.05f))
+                        .border(1.dp, HudBlue.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                        .padding(vertical = 2.dp)
+                ) {
+                    val telemetry = listOf(HudIndicator.BATTERY, HudIndicator.CPU)
+                    telemetry.forEach { indicator ->
+                        IndicatorToggleRow(indicator, activeIndicators, onToggleIndicator)
+                    }
+                    // Empty rows to match height
+                    Spacer(modifier = Modifier.height(72.dp))
                 }
             }
         }
+    }
+}
+
+@Composable
+fun IndicatorToggleRow(
+    indicator: HudIndicator,
+    activeIndicators: Set<HudIndicator>,
+    onToggle: (HudIndicator) -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(36.dp)
+            .clickable { onToggle(indicator) }
+    ) {
+        Checkbox(
+            checked = activeIndicators.contains(indicator),
+            onCheckedChange = { onToggle(indicator) },
+            colors = CheckboxDefaults.colors(
+                checkedColor = HudBlue,
+                uncheckedColor = HudBlue.copy(alpha = 0.4f),
+                checkmarkColor = HudBackground
+            )
+        )
+        Text(
+            text = indicator.name.replace("_", " "),
+            color = HudText,
+            fontSize = 9.sp,
+            fontFamily = FontFamily.Monospace
+        )
     }
 }
 

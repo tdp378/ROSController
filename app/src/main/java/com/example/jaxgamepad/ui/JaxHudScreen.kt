@@ -9,6 +9,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -42,6 +43,9 @@ import com.example.jaxgamepad.RobotMode
 import kotlin.math.min
 import kotlin.math.sqrt
 
+// Enum for LED and Telemetry selection
+enum class HudIndicator { ROS_LINK, MOTORS, IMU, CAMERA, BATTERY, CPU }
+
 private val HudText = Color(0xFFE6EEF5)
 private val HudBlue = Color(0xFF00E5FF)
 private val HudBlueD = Color(0xFF16589f)
@@ -70,6 +74,7 @@ fun JaxHudScreen(
         RobotMode("SIT", "sit"),
         RobotMode("LAY", "lay")
     ),
+    enabledIndicators: Set<HudIndicator> = HudIndicator.values().toSet(),
     videoActive: Boolean = false,
     hapticsEnabled: Boolean = true,
     onVideoToggle: (Boolean) -> Unit = {},
@@ -77,6 +82,7 @@ fun JaxHudScreen(
     onRightJoystickChanged: (x: Float, y: Float) -> Unit = { _, _ -> },
     onModeSelected: (String) -> Unit = {},
     onSettingsClick: () -> Unit = {},
+    onTerminateClick: () -> Unit = {},
     videoFeed: @Composable () -> Unit = { CameraPlaceholder(modifier = Modifier.fillMaxSize()) }
 ) {
     var mode by remember(selectedMode, modes) {
@@ -85,6 +91,20 @@ fun JaxHudScreen(
                 ?: modes.firstOrNull()
                 ?: RobotMode("WALK", "walk")
         )
+    }
+
+    // Filter LEDs based on user choice
+    val activeLedList = remember(enabledIndicators, isLinked, motorsActive, imuActive, cameraActive) {
+        mutableListOf<Triple<String, Color, Boolean>>().apply {
+            if (enabledIndicators.contains(HudIndicator.ROS_LINK))
+                add(Triple("ROS LINK", if (isLinked) Green else HudBlueD, isLinked))
+            if (enabledIndicators.contains(HudIndicator.MOTORS))
+                add(Triple("MOTORS", if (motorsActive) Green else HudBlueD, motorsActive))
+            if (enabledIndicators.contains(HudIndicator.IMU))
+                add(Triple("IMU", if (imuActive) Green else HudBlueD, imuActive))
+            if (enabledIndicators.contains(HudIndicator.CAMERA))
+                add(Triple("CAMERA", if (cameraActive) Green else HudBlueD, cameraActive))
+        }
     }
 
     val haptic = LocalHapticFeedback.current
@@ -112,7 +132,7 @@ fun JaxHudScreen(
                     .fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // LEFT PANEL
+                // LEFT PANEL (Status Indicators)
                 Box(
                     modifier = Modifier
                         .weight(0.25f)
@@ -125,13 +145,7 @@ fun JaxHudScreen(
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         StatusGroup(
-                            items = listOf(
-                                Triple("ROS LINK", if (isLinked) Green else HudBlueD, isLinked),
-                                Triple("MOTORS", if (motorsActive) Green else HudBlueD, motorsActive),
-                                Triple("IMU", if (imuActive) Green else HudBlueD, imuActive),
-                                Triple("CAMERA", if (cameraActive) Green else HudBlueD, cameraActive),
-
-                                ),
+                            items = activeLedList,
                             alignEnd = false
                         )
                     }
@@ -146,7 +160,7 @@ fun JaxHudScreen(
                     )
                 }
 
-                // CENTER PANEL
+                // CENTER PANEL (Video Feed)
                 Column(
                     modifier = Modifier
                         .weight(0.66f)
@@ -170,7 +184,7 @@ fun JaxHudScreen(
                     }
                 }
 
-                // RIGHT PANEL
+                // RIGHT PANEL (Telemetry & Battery)
                 Box(
                     modifier = Modifier
                         .weight(0.25f)
@@ -183,19 +197,18 @@ fun JaxHudScreen(
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                         horizontalAlignment = Alignment.End
                     ) {
+                        // Filtered Telemetry List
+                        val telemetryItems = mutableListOf<Triple<String, Color, Boolean>>().apply {
+                            if (enabledIndicators.contains(HudIndicator.BATTERY)) {
+                                add(Triple("BAT $batteryPercent%", if (!isLinked) HudBlueD else if (batteryPercent < 20) HudRed else Green, isLinked))
+                            }
+                            if (enabledIndicators.contains(HudIndicator.CPU)) {
+                                add(Triple("CPU $cpuTemp°", if (!isLinked) HudBlueD else if (cpuTemp > 75) HudRed else Green, isLinked))
+                            }
+                        }
+
                         StatusGroup(
-                            items = listOf(
-                                Triple(
-                                    "BAT $batteryPercent%",
-                                    if (!isLinked) HudBlueD else if (batteryPercent < 20) HudRed else Green,
-                                    isLinked
-                                ),
-                                Triple(
-                                    "CPU $cpuTemp°",
-                                    if (!isLinked) HudBlueD else if (cpuTemp > 75) HudRed else Green,
-                                    isLinked
-                                ),
-                            ),
+                            items = telemetryItems,
                             alignEnd = true
                         )
                     }
@@ -249,6 +262,23 @@ fun JaxHudScreen(
             }
         }
 
+        // TERMINATE/POWER BUTTON (LEFT)
+        IconButton(
+            onClick = onTerminateClick,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 16.dp, bottom = 10.dp)
+                .size(48.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.PowerSettingsNew,
+                contentDescription = "Terminate Session",
+                tint = HudRed.copy(alpha = 0.8f),
+                modifier = Modifier.size(32.dp)
+            )
+        }
+
+        // SETTINGS BUTTON (RIGHT)
         IconButton(
             onClick = onSettingsClick,
             modifier = Modifier
@@ -338,7 +368,7 @@ private fun HudTopBar(robotName: String, batteryPercent: Int, isLinked: Boolean)
 
         Text(
             text = if (isLinked) "ROS LINK: ONLINE" else "ROS LINK: OFFLINE",
-            color = if (isLinked) HudText else HudText,
+            color = HudText,
             fontSize = 12.sp,
             fontWeight = FontWeight.Normal,
             fontFamily = FontFamily.Monospace,
@@ -346,7 +376,6 @@ private fun HudTopBar(robotName: String, batteryPercent: Int, isLinked: Boolean)
                 .wrapContentWidth()
                 .align(Alignment.Bottom)
                 .padding(vertical = 8.dp)
-
         )
 
         Row(
@@ -354,7 +383,7 @@ private fun HudTopBar(robotName: String, batteryPercent: Int, isLinked: Boolean)
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically
         ) {
-
+            // Right-side Topbar empty for balance
         }
     }
 }
@@ -435,24 +464,6 @@ private fun PulsingDot(color: Color, animate: Boolean) {
                 .clip(CircleShape)
                 .background(color)
                 .border(1.dp, Color.White.copy(alpha = 0.1f), CircleShape)
-        )
-    }
-}
-
-@Composable
-private fun BatteryGlyph(level: Float) {
-    Box(
-        modifier = Modifier
-            .width(22.dp)
-            .height(12.dp)
-            .border(1.dp, HudText.copy(alpha = 0.8f), RoundedCornerShape(2.dp))
-            .padding(1.5.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxHeight()
-                .fillMaxWidth(level.coerceIn(0f, 1f))
-                .background(HudBlueD)
         )
     }
 }
@@ -689,26 +700,34 @@ fun HudJoystick(
 
 @Preview(name = "Robot Offline", widthDp = 891, heightDp = 411, showBackground = true)
 @Composable
-private fun JaxHudScreenPreviewOffline() {
+fun JaxHudScreenPreviewOffline() {
     JaxHudScreen(
+        robotName = "OFFLINE",
         isLinked = false,
         motorsActive = false,
         batteryPercent = 0,
         cpuTemp = 0,
-        videoActive = false
+        videoActive = false,
+        modes = listOf(RobotMode("STAND", "stand"), RobotMode("WALK", "walk"))
     )
 }
 
 @Preview(name = "Robot Online", widthDp = 891, heightDp = 411, showBackground = true)
 @Composable
-private fun JaxHudScreenPreviewOnline() {
+fun JaxHudScreenPreviewOnline() {
     JaxHudScreen(
+        robotName = "ApeX-1",
         isLinked = true,
         motorsActive = true,
         imuActive = true,
         cameraActive = true,
         batteryPercent = 88,
         cpuTemp = 42,
-        videoActive = true
+        videoActive = true,
+        videoFeed = {
+            Box(Modifier.fillMaxSize().background(Color.DarkGray), contentAlignment = Alignment.Center) {
+                Text("CAMERA FEED ACTIVE", color = Color.White, fontSize = 12.sp)
+            }
+        }
     )
 }
