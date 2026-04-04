@@ -45,8 +45,10 @@ class RobotManager(context: Context) {
     fun loadRobots(): List<RobotConfig> {
         val jsonString = prefs.getString("saved_robots", null)
 
+        // If nothing is saved, we return an empty list
+        // (AppNavigation will handle injecting the ROSbot sample)
         if (jsonString.isNullOrBlank()) {
-            return listOf(defaultRobot())
+            return emptyList()
         }
 
         val robots = mutableListOf<RobotConfig>()
@@ -69,8 +71,7 @@ class RobotManager(context: Context) {
                         imuTopic = obj.optJSONObject("imuTopic")?.toTopicBinding(),
                         odomTopic = obj.optJSONObject("odomTopic")?.toTopicBinding(),
                         jointStateTopic = obj.optJSONObject("jointStateTopic")?.toTopicBinding(),
-                        modes = obj.optJSONArray("modes")?.toRobotModes()
-                            ?: defaultModes()
+                        modes = obj.optJSONArray("modes")?.toRobotModes() ?: emptyList()
                     )
                 )
             }
@@ -78,33 +79,16 @@ class RobotManager(context: Context) {
             e.printStackTrace()
         }
 
-        return if (robots.isEmpty()) listOf(defaultRobot()) else robots
+        return robots
     }
 
-    private fun defaultRobot(): RobotConfig {
-        return RobotConfig(
-            name = "Jax-1",
-            rosAddress = "192.168.1.154:9090",
-            videoUrl = "http://192.168.1.154:8080/stream?topic=/image_raw",
-            cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
-            modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
-            batteryTopic = null,
-            imuTopic = null,
-            odomTopic = null,
-            jointStateTopic = null,
-            modes = defaultModes()
-        )
-    }
-
-    private fun defaultModes(): List<RobotMode> {
-        return listOf(
-            RobotMode("STAND", "stand"),
-            RobotMode("WALK", "walk"),
-            RobotMode("SIT", "sit"),
-            RobotMode("LAY", "lay")
-        )
+    // Call this if you want to force-delete everything from storage
+    fun clearAll() {
+        prefs.edit().clear().apply()
     }
 }
+
+// --- Helper Extensions (Keep these as they are) ---
 
 private fun TopicBinding.toJson(): JSONObject {
     return JSONObject().apply {
@@ -122,28 +106,13 @@ private fun JSONObject.toTopicBinding(): TopicBinding {
 
 private fun JSONArray.toRobotModes(): List<RobotMode> {
     val modes = mutableListOf<RobotMode>()
-
     for (i in 0 until length()) {
         val obj = optJSONObject(i) ?: continue
         val label = obj.optString("label", "").trim()
         val command = obj.optString("command", "").trim()
-
         if (label.isNotBlank() && command.isNotBlank()) {
             modes.add(RobotMode(label = label, command = command))
         }
     }
-
-    return if (modes.isEmpty()) {
-        listOf(
-            RobotMode("STAND", "stand"),
-            RobotMode("WALK", "walk"),
-            RobotMode("SIT", "sit"),
-            RobotMode("LAY", "lay"),
-            RobotMode("SHAKE", "shake"),
-            RobotMode("WAVE", "wave")
-
-        )
-    } else {
-        modes
-    }
+    return modes
 }

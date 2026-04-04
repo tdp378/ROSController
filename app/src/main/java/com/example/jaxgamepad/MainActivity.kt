@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.os.Bundle
+import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -15,9 +16,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -41,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -136,7 +136,7 @@ fun CyberDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TextButton(onClick = onDismiss) {
-                        Text("ABORT", color = Color.Gray)
+                        Text("Not Now", color = Color.Gray)
                     }
 
                     Spacer(modifier = Modifier.width(12.dp))
@@ -232,9 +232,31 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
     val context = LocalContext.current
     val robotManager = remember { RobotManager(context) }
 
+    var savedRobots by remember {
+        val loaded = robotManager.loadRobots()
+        val cleaned = if (loaded.isEmpty() || loaded.any { it.name.lowercase() == "jax-1" }) {
+            val sample = listOf(RobotConfig(
+                name = "ROSbot (Demo)",
+                rosAddress = "192.168.1.XX",
+                videoUrl = "http://192.168.1.XX:8080/stream?topic=/camera/image_raw",
+                thumbnailPath = "demo_thumb",
+                modes = listOf(
+                    RobotMode("STAND", "stand"),
+                    RobotMode("WALK", "walk"),
+                    RobotMode("LAY", "lay"),
+                    RobotMode("SHAKE", "shake"),
+                    RobotMode("SIT", "sit"),
+                    RobotMode("WAVE", "wave"),
+                )
+            ))
+            robotManager.saveRobots(sample)
+            sample
+        } else loaded
+        mutableStateOf(cleaned)
+    }
+
     var currentScreen by remember { mutableStateOf(Screen.Menu) }
-    var savedRobots by remember { mutableStateOf(robotManager.loadRobots()) }
-    var currentRobot by remember { mutableStateOf(savedRobots.firstOrNull() ?: RobotConfig("", "", "")) }
+    var currentRobot by remember { mutableStateOf(savedRobots.firstOrNull() ?: RobotConfig("ROSbot (Demo)", "", "")) }
     var hapticsEnabled by remember { mutableStateOf(true) }
 
     val ros = remember { RosbridgeClient() }
@@ -284,11 +306,11 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
                 if (currentRobot.name == oldName) currentRobot = newRobot
             },
             onDelete = { robot ->
-                if (savedRobots.size > 1) {
-                    val list = savedRobots.filter { it.name != robot.name }
-                    savedRobots = list
-                    robotManager.saveRobots(list)
-                    if (currentRobot.name == robot.name) currentRobot = list.first()
+                val list = savedRobots.filter { it.name != robot.name }
+                savedRobots = list
+                robotManager.saveRobots(list)
+                if (list.isNotEmpty()) {
+                    currentRobot = list.first()
                 }
             },
             onBack = { currentScreen = Screen.Menu }
@@ -312,7 +334,7 @@ fun JaxDriverScreen(
     var turnZ by remember { mutableStateOf(0.0) }
     var showSettings by remember { mutableStateOf(false) }
 
-    var videoLoaded by remember(currentRobot.videoUrl) { mutableStateOf(false) }
+    var videoLoadedManually by remember(currentRobot.name) { mutableStateOf(false) }
     var videoError by remember(currentRobot.videoUrl) { mutableStateOf<String?>(null) }
     var videoButtonActive by remember(currentRobot.videoUrl) { mutableStateOf(false) }
 
@@ -360,21 +382,7 @@ fun JaxDriverScreen(
                 reHideSystemBars()
             },
             onDisconnect = { ros.disconnect() },
-            extraContent = {
-                TextButton(
-                    onClick = onBackToMenu,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(40.dp)
-                ) {
-                    Text(
-                        text = "BACK TO MAIN MENU",
-                        color = HudBlue,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
+            onBackToMenu = onBackToMenu
         )
     }
 
@@ -389,7 +397,7 @@ fun JaxDriverScreen(
         hapticsEnabled = hapticsEnabled,
         onVideoToggle = { enabled ->
             videoButtonActive = enabled
-            videoLoaded = false
+            videoLoadedManually = enabled
             videoError = null
         },
         onLeftJoystickChanged = { x, y ->
@@ -404,16 +412,15 @@ fun JaxDriverScreen(
         videoFeed = {
             VideoFeedContainer(
                 modifier = Modifier.fillMaxSize(),
-                hatchOpen = videoButtonActive && videoLoaded,
-                errorText = videoError
+                hatchOpen = videoButtonActive && videoLoadedManually,
+                errorText = videoError,
+                videoUrl = currentRobot.videoUrl
             ) {
                 if (videoButtonActive) {
                     MjpegWebView(
                         url = currentRobot.videoUrl,
                         onLoadingStateChanged = { loaded, error ->
-                            videoLoaded = loaded
                             videoError = error
-                            if (!loaded && !error.isNullOrBlank()) videoButtonActive = false
                         },
                         onUserInteraction = reHideSystemBars
                     )
@@ -438,10 +445,53 @@ fun RobotSetupScreen(
     var editingRobot by remember(initialEditingRobot) { mutableStateOf(initialEditingRobot) }
     var isAdding by remember(initialIsAdding) { mutableStateOf(initialIsAdding) }
     var robotToDelete by remember { mutableStateOf<RobotConfig?>(null) }
+    var showRosRequirements by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     var selectedTabOrStep by remember { mutableIntStateOf(initialSelectedTabOrStep) }
     var maxStepReached by remember(isAdding) { mutableIntStateOf(initialSelectedTabOrStep) }
+
+    var showWelcomeDialog by remember(savedRobots) {
+        mutableStateOf(savedRobots.size == 1 && savedRobots.first().name.contains("ROSbot"))
+    }
+
+    CyberDialog(
+        show = showWelcomeDialog && editingRobot == null && !isAdding,
+        title = "SYSTEM NOTIFICATION",
+        confirmText = "ADD NEW ▶",
+        onConfirm = {
+            showWelcomeDialog = false
+            showRosRequirements = true
+        },
+        onDismiss = { showWelcomeDialog = false }
+    ) {
+        Text(
+            "We have provided you with a sample robot (ROSbot) to test the UI. Configure your own robot to realize the full functionality of the controller.",
+            color = HudText,
+            fontSize = 14.sp
+        )
+    }
+
+    CyberDialog(
+        show = showRosRequirements,
+        title = "MINIMUM REQUIREMENTS",
+        confirmText = "PROCEED ▶",
+        onConfirm = {
+            showRosRequirements = false
+            isAdding = true
+            selectedTabOrStep = 0
+            maxStepReached = 0
+        },
+        onDismiss = { showRosRequirements = false }
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Hardware requires the following environment:", color = HudBlue, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            Text("• ROS2 Humble or later recommended", color = HudText, fontSize = 13.sp)
+            Text("• Rosbridge Suite (WebSocket) installed", color = HudText, fontSize = 13.sp)
+            Text("• Network visibility to Robot IP:9090", color = HudText, fontSize = 13.sp)
+            Text("• MJPEG stream for Video Support", color = HudText, fontSize = 13.sp)
+        }
+    }
 
     if (robotToDelete != null) {
         AlertDialog(
@@ -509,21 +559,33 @@ fun RobotSetupScreen(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
-                CyberButton(
-                    onClick = {
-                        isAdding = true
-                        selectedTabOrStep = 0
-                        maxStepReached = 0
-                    },
-                    modifier = Modifier
-                        .align(Alignment.End)
-                        .size(width = 130.dp, height = 35.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Image(
-                        painter = painterResource(R.drawable.add_new_button),
-                        contentDescription = "Add New",
-                        modifier = Modifier.fillMaxSize()
+
+                    Text(modifier = Modifier.padding(end = 6.dp),
+                        text = "ADD NEW",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = HudBlue,
+                        letterSpacing = 1.sp
                     )
+
+                    IconButton(
+                        onClick = { showRosRequirements = true },
+                        modifier = Modifier
+                            .background(HudBlue.copy(alpha = 0.1f), CircleShape)
+                            .border(1.dp, HudBlue.copy(alpha = 0.4f), CircleShape)
+                            .size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Add New",
+                            tint = HudBlue
+                        )
+                    }
                 }
 
                 LazyColumn(
@@ -563,7 +625,7 @@ fun RobotSetupScreen(
             var addr by remember(editingRobot) { mutableStateOf(initial.rosAddress) }
             var url by remember(editingRobot) { mutableStateOf(initial.videoUrl) }
             var selectedThumbnailUri by remember(editingRobot) {
-                mutableStateOf<Uri?>(initial.thumbnailPath?.let { Uri.fromFile(File(it)) })
+                mutableStateOf<Uri?>(if (initial.thumbnailPath != null && initial.thumbnailPath != "demo_thumb") Uri.fromFile(File(initial.thumbnailPath)) else null)
             }
 
             var allDiscoveredTopics by remember { mutableStateOf<List<RosTopicInfo>>(emptyList()) }
@@ -681,7 +743,18 @@ fun RobotSetupScreen(
                                         AsyncImage(
                                             model = selectedThumbnailUri,
                                             contentDescription = null,
-                                            modifier = Modifier.fillMaxSize(),
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .clip(RoundedCornerShape(12.dp)),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    } else if (initial.thumbnailPath == "demo_thumb") {
+                                        Image(
+                                            painter = painterResource(id = R.drawable.jax_demo_icon),
+                                            contentDescription = null,
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .clip(RoundedCornerShape(12.dp)),
                                             contentScale = ContentScale.Crop
                                         )
                                     } else {
@@ -698,59 +771,41 @@ fun RobotSetupScreen(
                             HudTextField(value = url, onValueChange = { url = it }, label = "VIDEO SERVER URL (OPTIONAL)")
                         }
                         1 -> {
-                            CyberButton(
-                                enabled = !discovering,
+                            DiscoverTopicsButton(
+                                discovering = discovering,
+                                status = discoverStatus,
                                 onClick = {
                                     if (addr.isBlank()) {
-                                        discoverStatus = "Enter IP first"
-                                        return@CyberButton
-                                    }
-                                    discovering = true
-                                    discoverStatus = "Connecting..."
-                                    scope.launch {
-                                        ros.disconnect()
-                                        var connected = false
-                                        ros.connect("ws://$addr") { connected = true }
-                                        delay(3000)
-                                        if (!connected) {
-                                            discovering = false
-                                            discoverStatus = "Timeout"
-                                            return@launch
-                                        }
-                                        ros.discoverTopics { res ->
-                                            discovering = false
-                                            res.onSuccess { disc ->
-                                                allDiscoveredTopics = disc.allTopics
-                                                cmdVelTopic = disc.cmdVelTopic
-                                                modeTopic = disc.modeTopic
-                                                batteryTopic = disc.batteryTopic
-                                                imuTopic = disc.imuTopic
-                                                odomTopic = disc.odomTopic
-                                                jointStateTopic = disc.jointStateTopic
-                                                discoverStatus = "Topics synchronized"
-                                            }.onFailure {
-                                                discoverStatus = "Discovery failed"
+                                        discoverStatus = "IP REQUIRED"
+                                    } else {
+                                        discovering = true
+                                        discoverStatus = "SCANNING $addr..."
+                                        scope.launch {
+                                            ros.disconnect()
+                                            var connected = false
+                                            ros.connect("ws://$addr") { connected = true }
+                                            delay(5000)
+                                            if (!connected) {
+                                                discovering = false
+                                                discoverStatus = "UNABLE TO CONNECT. CHECK IP:PORT."
+                                            } else {
+                                                ros.discoverTopics { res ->
+                                                    discovering = false
+                                                    res.onSuccess { disc ->
+                                                        allDiscoveredTopics = disc.allTopics
+                                                        cmdVelTopic = disc.cmdVelTopic
+                                                        modeTopic = disc.modeTopic
+                                                        batteryTopic = disc.batteryTopic
+                                                        discoverStatus = "SYNC COMPLETE"
+                                                    }.onFailure {
+                                                        discoverStatus = "SYNC FAILED"
+                                                    }
+                                                }
                                             }
                                         }
                                     }
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(60.dp)
-                            ) {
-                                Image(
-                                    painter = painterResource(R.drawable.discover_button),
-                                    contentDescription = null,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            }
-                            if (!discoverStatus.isNullOrBlank()) {
-                                Text(
-                                    text = discoverStatus!!,
-                                    color = HudBlue,
-                                    fontSize = 12.sp
-                                )
-                            }
+                                }
+                            )
 
                             TopicBindingDropdown(
                                 title = "CMD VEL",
@@ -798,13 +853,18 @@ fun RobotSetupScreen(
                         2 -> {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "CONFIGURED MODES",
+
+                                Text(modifier = Modifier.padding(end = 6.dp),
+                                    text = "ADD MODE",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
                                     color = HudBlue,
-                                    fontWeight = FontWeight.Bold
+                                    letterSpacing = 1.sp
                                 )
+
                                 IconButton(
                                     onClick = {
                                         modeToEditIndex = null
@@ -812,7 +872,8 @@ fun RobotSetupScreen(
                                     },
                                     modifier = Modifier
                                         .background(HudBlue.copy(alpha = 0.1f), CircleShape)
-                                        .size(32.dp)
+                                        .border(1.dp, HudBlue.copy(alpha = 0.4f), CircleShape)
+                                        .size(36.dp)
                                 ) {
                                     Icon(Icons.Default.Add, null, tint = HudBlue)
                                 }
@@ -920,6 +981,62 @@ fun RobotSetupScreen(
 
 
 @Composable
+fun DiscoverTopicsButton(
+    discovering: Boolean,
+    status: String?,
+    onClick: () -> Unit
+) {
+    val rotation = rememberInfiniteTransition(label = "sync")
+    val angle by rotation.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(1000, easing = LinearEasing)),
+        label = "angle"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(50.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(HudBlue.copy(alpha = 0.05f))
+            .border(1.dp, HudBlue.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+            .clickable(enabled = !discovering, onClick = onClick)
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Default.Sync,
+                contentDescription = null,
+                tint = if (discovering) HudBlue else HudText.copy(alpha = 0.6f),
+                modifier = Modifier
+                    .size(20.dp)
+                    .rotate(if (discovering) angle else 0f)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text(
+                    text = "AUTO DISCOVER TOPICS",
+                    color = HudBlue,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                )
+                if (!status.isNullOrBlank()) {
+                    Text(
+                        text = status.uppercase(),
+                        color = HudText.copy(alpha = 0.5f),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Light
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun StartMenuScreen(
     ros: RosbridgeClient,
     savedRobots: List<RobotConfig>,
@@ -927,6 +1044,24 @@ fun StartMenuScreen(
     onLaunchSetup: () -> Unit
 ) {
     var showRobotSelectDialog by remember { mutableStateOf(false) }
+    var showNoRobotWarning by remember { mutableStateOf(false) }
+
+    CyberDialog(
+        show = showNoRobotWarning,
+        title = "PILOT AUTHORIZATION",
+        confirmText = "GO TO SETUP",
+        onConfirm = {
+            showNoRobotWarning = false
+            onLaunchSetup()
+        },
+        onDismiss = { showNoRobotWarning = false }
+    ) {
+        Text(
+            "No active robot links detected. Navigate to Setup to initialize a new hardware profile.",
+            color = HudText,
+            fontSize = 14.sp
+        )
+    }
 
     if (showRobotSelectDialog) {
         RobotSelectionDialog(
@@ -957,13 +1092,16 @@ fun StartMenuScreen(
 
             MainMenuPanel {
                 CyberButton(
-                    onClick = { showRobotSelectDialog = true },
+                    onClick = {
+                        if (savedRobots.isEmpty()) showNoRobotWarning = true
+                        else showRobotSelectDialog = true
+                    },
                     modifier = Modifier.fillMaxWidth(.85f)
                 ) {
                     Image(
                         painter = painterResource(id = R.drawable.launch_controller),
                         contentDescription = null,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().alpha(if (savedRobots.isEmpty()) 0.5f else 1f),
                         contentScale = ContentScale.Fit
                     )
                 }
@@ -982,23 +1120,26 @@ fun StartMenuScreen(
                     )
                 }
             }
-
             Spacer(modifier = Modifier.weight(0.12f))
         }
     }
 }
+
 @Composable
 fun RobotSelectionDialog(
     savedRobots: List<RobotConfig>,
     onDismiss: () -> Unit,
     onSelect: (RobotConfig) -> Unit
 ) {
-    var selected by remember { mutableStateOf(savedRobots.firstOrNull()) }
+    var selected by remember {
+        val firstReal = savedRobots.firstOrNull { !it.name.contains("ROSbot", ignoreCase = true) }
+        mutableStateOf(firstReal ?: savedRobots.firstOrNull())
+    }
 
     CyberDialog(
         show = true,
         title = "Robot Selection",
-        confirmText = "Launch",
+        confirmText = "LAUNCH ▶",
         onConfirm = { selected?.let { onSelect(it) } },
         onDismiss = onDismiss
     ) {
@@ -1037,9 +1178,38 @@ fun RobotSelectionDialog(
                         Text(
                             text = robot.name,
                             color = if (isSelected) HudBlue else HudText,
-                            fontSize = 16.sp
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium
                         )
                     }
+                }
+            }
+        }
+
+        if (selected?.name?.contains("ROSbot", ignoreCase = true) == true) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Surface(
+                color = HudBlue.copy(alpha = 0.05f),
+                shape = RoundedCornerShape(8.dp),
+                border = BorderStroke(1.dp, HudBlue.copy(alpha = 0.2f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = HudBlue,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "NOTE: This is a demo profile to test the UI. Real-time hardware telemetry and video streaming will not be available until a live ROS bridge is configured.",
+                        color = HudText.copy(alpha = 0.7f),
+                        fontSize = 10.sp,
+                        lineHeight = 14.sp
+                    )
                 }
             }
         }
@@ -1275,7 +1445,13 @@ fun RobotListItem(
                     .clip(RoundedCornerShape(8.dp))
                     .background(HudBackground)
             ) {
-                if (robot.thumbnailPath != null) {
+                if (robot.thumbnailPath == "demo_thumb") {
+                    Image(
+                        painter = painterResource(id = R.drawable.jax_demo_icon),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop
+                    )
+                } else if (robot.thumbnailPath != null) {
                     AsyncImage(
                         model = File(robot.thumbnailPath),
                         contentDescription = null,
@@ -1335,6 +1511,8 @@ fun MjpegWebView(
                     override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
                         if (request?.isForMainFrame == true) {
                             onLoadingStateChanged(false, error?.description?.toString())
+                            // Kill the default Android error icon
+                            view?.visibility = android.view.View.INVISIBLE
                         }
                     }
                 }
@@ -1346,7 +1524,7 @@ fun MjpegWebView(
                 loadUrl(url)
             }
         },
-        update = { it.loadUrl(url) },
+        update = { it.visibility = android.view.View.VISIBLE; it.loadUrl(url) },
         modifier = modifier
     )
 }
@@ -1356,6 +1534,7 @@ fun VideoFeedContainer(
     modifier: Modifier = Modifier,
     hatchOpen: Boolean,
     errorText: String?,
+    videoUrl: String,
     videoContent: @Composable BoxScope.() -> Unit
 ) {
     Box(
@@ -1364,14 +1543,58 @@ fun VideoFeedContainer(
             .background(Color.Black)
             .border(1.dp, HudBorder.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
     ) {
+        // This is where the WebView sits "behind" the doors
         videoContent()
+
+        if (hatchOpen) {
+            Column(
+                modifier = Modifier.align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                val primaryMsg = if (videoUrl.isNotBlank()) "SIGNAL LINK ERROR" else "NO VIDEO FEED CONFIGURED"
+                val secondaryMsg = if (videoUrl.isNotBlank()) "CHECK NETWORK STATUS" else "HARDWARE LINK REQUIRED"
+
+                Icon(
+                    imageVector = if (videoUrl.isNotBlank()) Icons.Default.SignalWifiStatusbarConnectedNoInternet4 else Icons.Default.VideocamOff,
+                    contentDescription = null,
+                    tint = HudBlue.copy(alpha = 0.5f),
+                    modifier = Modifier.size(32.dp)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = primaryMsg,
+                    color = HudBlue,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                )
+                Text(
+                    text = secondaryMsg,
+                    color = HudBlue.copy(alpha = 0.6f),
+                    fontSize = 8.sp
+                )
+                if (videoUrl.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = videoUrl,
+                        color = HudText.copy(alpha = 0.4f),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Light
+                    )
+                }
+            }
+        }
+
+        // The Hatch doors sit on the very top layer
         HatchOverlay(
             modifier = Modifier.matchParentSize(),
             isOpen = hatchOpen
         )
+
+        // Overlay text if it's strictly offline/error before opening
         if (!errorText.isNullOrBlank() && !hatchOpen) {
             Text(
-                text = "VIDEO OFFLINE",
+                text = "VIDEO SYSTEM OFFLINE",
                 color = HudBlue,
                 modifier = Modifier.align(Alignment.Center),
                 fontSize = 10.sp,
@@ -1430,6 +1653,7 @@ fun HatchOverlay(
         }
     }
 }
+
 @Composable
 fun SettingsDialog(
     savedRobots: List<RobotConfig>,
@@ -1438,44 +1662,64 @@ fun SettingsDialog(
     onDismiss: () -> Unit,
     onSave: (RobotConfig, Boolean) -> Unit,
     onDisconnect: () -> Unit,
-    extraContent: @Composable () -> Unit
+    onBackToMenu: () -> Unit
 ) {
     var haptics by remember { mutableStateOf(initialHaptics) }
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            color = HudBackground,
-            shape = RoundedCornerShape(12.dp),
-            border = BorderStroke(1.dp, HudBlue)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+
+    CyberDialog(
+        show = true,
+        title = "SYSTEM CONFIG",
+        confirmText = "APPLY ▶",
+        onConfirm = { onSave(currentRobot, haptics) },
+        onDismiss = onDismiss
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(HudBlue.copy(alpha = 0.05f))
+                    .border(1.dp, HudBlue.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                    .padding(8.dp)
             ) {
+                Checkbox(
+                    checked = haptics,
+                    onCheckedChange = { haptics = it },
+                    colors = CheckboxDefaults.colors(
+                        checkedColor = HudBlue,
+                        uncheckedColor = HudBlue.copy(alpha = 0.4f),
+                        checkmarkColor = HudBackground
+                    )
+                )
                 Text(
-                    text = "SYSTEM CONFIG",
-                    color = HudBlue,
+                    text = "ENABLE HAPTIC FEEDBACK",
+                    color = HudText,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Bold
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(
-                        checked = haptics,
-                        onCheckedChange = { haptics = it },
-                        colors = CheckboxDefaults.colors(checkedColor = HudBlue)
-                    )
+            }
+
+            CyberButton(
+                onClick = onBackToMenu,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(45.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .border(1.dp, Color.Red.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                        .background(Color.Red.copy(alpha = 0.05f), RoundedCornerShape(10.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
                     Text(
-                        text = "ENABLE HAPTICS",
-                        color = HudText,
+                        text = "TERMINATE SESSION",
+                        color = Color.Red,
+                        fontWeight = FontWeight.Bold,
                         fontSize = 12.sp
                     )
                 }
-                Button(
-                    onClick = { onSave(currentRobot, haptics) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = HudBlue)
-                ) {
-                    Text("APPLY", color = HudBackground)
-                }
-                extraContent()
             }
         }
     }
@@ -1489,155 +1733,27 @@ fun ModeEditDialog(
 ) {
     var label by remember { mutableStateOf(initialMode?.label ?: "") }
     var cmd by remember { mutableStateOf(initialMode?.command ?: "") }
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            color = HudBackground,
-            shape = RoundedCornerShape(12.dp),
-            border = BorderStroke(1.dp, HudBorder)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                HudTextField(label, { label = it }, "LABEL")
-                HudTextField(cmd, { cmd = it }, "COMMAND")
-                Button(
-                    onClick = { onSave(RobotMode(label, cmd)) },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("SAVE")
-                }
+
+    CyberDialog(
+        show = true,
+        title = if (initialMode == null) "NEW MODE CONFIG" else "EDIT MODE CONFIG",
+        confirmText = "SAVE ▶",
+        onConfirm = {
+            if (label.isNotBlank() && cmd.isNotBlank()) {
+                onSave(RobotMode(label, cmd))
             }
-        }
-    }
-}
-
-// --- PREVIEWS ---
-
-@Preview(name = "Hatch Animation Test", showBackground = true, widthDp = 400, heightDp = 250)
-@Composable
-fun PreviewHatchMovement() {
-    var doorOpen by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        while(true) {
-            delay(2000)
-            doorOpen = !doorOpen
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.DarkGray),
-        contentAlignment = Alignment.Center
+        },
+        onDismiss = onDismiss
     ) {
-        Text("CAMERA SENSOR", color = Color.White)
-
-        HatchOverlay(isOpen = doorOpen)
-
-        Text(
-            text = if (doorOpen) "OPENING..." else "CLOSING...",
-            modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
-            color = HudBlue,
-            fontSize = 10.sp
-        )
-    }
-}
-
-@Preview(showBackground = true, name = "1. Saved Robots List")
-@Composable
-fun PreviewRobotList() {
-    MaterialTheme {
-        RobotSetupScreen(
-            ros = RosbridgeClient(),
-            savedRobots = listOf(RobotConfig("Jax-Alpha", "192.168.1.50", "")),
-            onSave = { _, _ -> },
-            onDelete = {},
-            onBack = {},
-            initialIsAdding = false
-        )
-    }
-}
-
-@Preview(showBackground = true, name = "2. Adding New (Tab 1)")
-@Composable
-fun PreviewAddingRobot() {
-    MaterialTheme {
-        RobotSetupScreen(
-            ros = RosbridgeClient(),
-            savedRobots = emptyList(),
-            onSave = { _, _ -> },
-            onDelete = {},
-            onBack = {},
-            initialIsAdding = true,
-            initialSelectedTabOrStep = 0
-        )
-    }
-}
-
-@Preview(showBackground = true, name = "3. Editing Existing (Tab 2)")
-@Composable
-fun PreviewEditingRobot() {
-    MaterialTheme {
-        RobotSetupScreen(
-            ros = RosbridgeClient(),
-            savedRobots = emptyList(),
-            onSave = { _, _ -> },
-            onDelete = {},
-            onBack = {},
-            initialEditingRobot = RobotConfig("ApeX-1", "10.0.0.5", ""),
-            initialSelectedTabOrStep = 1
-        )
-    }
-}
-
-@Preview(showBackground = true, name = "4. Robot Selection Dialog")
-@Composable
-fun PreviewRobotSelectionDialog() {
-    JaxGamepadTheme {
-        RobotSelectionDialog(
-            savedRobots = listOf(
-                RobotConfig("Jax-Alpha", "192.168.1.50", ""),
-                RobotConfig("ApeX-1", "10.0.0.5", ""),
-                RobotConfig("Unit-7", "192.168.1.101", "")
-            ),
-            onDismiss = {},
-            onSelect = {}
-        )
-    }
-}
-
-@Preview(showBackground = true, name = "5. Mode Editor Row")
-@Composable
-fun PreviewModeEditorRow() {
-    JaxGamepadTheme {
-        Box(
-            modifier = Modifier
-                .padding(16.dp)
-                .background(HudBackground)
-        ) {
-            ModeEditorRow(
-                mode = RobotMode("WALK", "walk"),
-                onEdit = {},
-                onDelete = {}
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                text = "ASSIGN LABEL AND COMMAND STRING",
+                color = HudBlue,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
             )
+            HudTextField(value = label, onValueChange = { label = it }, label = "LABEL (e.g. WALK)")
+            HudTextField(value = cmd, onValueChange = { cmd = it }, label = "ROS COMMAND (e.g. walk)")
         }
-    }
-}
-
-@Preview(showBackground = true, name = "6. Start Menu Screen")
-@Composable
-fun PreviewStartMenuScreen() {
-    JaxGamepadTheme {
-        StartMenuScreen(
-            ros = RosbridgeClient(),
-            savedRobots = listOf(
-                RobotConfig("Jax-Alpha", "192.168.1.50", ""),
-                RobotConfig("ApeX-1", "10.0.0.5", "")
-            ),
-            onLaunchGamepad = {},
-            onLaunchSetup = {}
-        )
     }
 }
