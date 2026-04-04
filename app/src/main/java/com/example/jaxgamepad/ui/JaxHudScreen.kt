@@ -11,7 +11,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -27,8 +26,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -36,7 +37,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.jaxgamepad.Black
-import com.example.jaxgamepad.HudBlue
 import com.example.jaxgamepad.R
 import com.example.jaxgamepad.RobotMode
 import kotlin.math.min
@@ -44,17 +44,23 @@ import kotlin.math.sqrt
 
 private val HudText = Color(0xFFE6EEF5)
 private val HudBlue = Color(0xFF00E5FF)
-private val HudBorder = Color(0xFF27719a)
-private val Hudglow = Color(0xFF4db9db)
-
+private val HudBlueD = Color(0xFF16589f)
+private val HudBorder = Color(0xFF27719A)
+private val HudGlow = Color(0xFF4DB9DB)
+private val HudRed = Color(0xFFFF3D00)
+private val Green = Color(0xFF00FF00)
 
 
 @Composable
 fun JaxHudScreen(
     modifier: Modifier = Modifier,
     robotName: String = "Jax-1",
-    batteryPercent: Int = 78,
-    cameraActive: Boolean = true,
+    batteryPercent: Int = 0,
+    cpuTemp: Int = 0,
+    isLinked: Boolean = false,
+    motorsActive: Boolean = false,
+    imuActive: Boolean = false,
+    cameraActive: Boolean = false,
     leftJoystickValue: Pair<Float, Float> = 0f to 0f,
     rightJoystickValue: Pair<Float, Float> = 0f to 0f,
     selectedMode: String = "walk",
@@ -65,6 +71,7 @@ fun JaxHudScreen(
         RobotMode("LAY", "lay")
     ),
     videoActive: Boolean = false,
+    hapticsEnabled: Boolean = true,
     onVideoToggle: (Boolean) -> Unit = {},
     onLeftJoystickChanged: (x: Float, y: Float) -> Unit = { _, _ -> },
     onRightJoystickChanged: (x: Float, y: Float) -> Unit = { _, _ -> },
@@ -80,20 +87,22 @@ fun JaxHudScreen(
         )
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    val haptic = LocalHapticFeedback.current
+
+    Box(modifier = modifier.fillMaxSize()) {
         Image(
             painter = painterResource(id = R.drawable.hud_background),
             contentDescription = null,
             modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.FillBounds
+            contentScale = ContentScale.Crop
         )
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(start = 22.dp, top = 8.dp, end = 22.dp, bottom = 0.dp)
         ) {
-            HudTopBar(robotName = robotName, batteryPercent = batteryPercent)
-
+            HudTopBar(robotName = robotName, batteryPercent = batteryPercent, isLinked = isLinked)
 
             Spacer(Modifier.height(4.dp))
 
@@ -103,33 +112,44 @@ fun JaxHudScreen(
                     .fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // LEFT PANEL
                 Box(
                     modifier = Modifier
                         .weight(0.25f)
                         .fillMaxHeight()
                 ) {
-                    StatusGroup(
-                        items = listOf(
-                            Triple("LINK", HudBlue, true),
-                            Triple("MOTORS", HudBlue, true),
-                            Triple("IMU", HudBlue, true),
-                            Triple("SAFE", HudBlue, true),
-                        ),
-                        modifier = Modifier.align(Alignment.TopStart)
-                    )
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(start = 2.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        StatusGroup(
+                            items = listOf(
+                                Triple("ROS LINK", if (isLinked) Green else HudBlueD, isLinked),
+                                Triple("MOTORS", if (motorsActive) Green else HudBlueD, motorsActive),
+                                Triple("IMU", if (imuActive) Green else HudBlueD, imuActive),
+                                Triple("CAMERA", if (cameraActive) Green else HudBlueD, cameraActive),
+
+                                ),
+                            alignEnd = false
+                        )
+                    }
 
                     HudJoystick(
                         value = leftJoystickValue,
                         onValueChanged = onLeftJoystickChanged,
+                        hapticsEnabled = hapticsEnabled,
                         modifier = Modifier
                             .size(180.dp)
                             .align(Alignment.BottomCenter)
                     )
                 }
 
+                // CENTER PANEL
                 Column(
                     modifier = Modifier
-                        .weight(.66f)
+                        .weight(0.66f)
                         .fillMaxHeight(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Top
@@ -138,7 +158,11 @@ fun JaxHudScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(1.9f)
-                            .border(1.dp, HudBorder.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                            .border(
+                                1.dp,
+                                HudBlueD.copy(alpha = 0.5f),
+                                RoundedCornerShape(12.dp)
+                            )
                             .clip(RoundedCornerShape(12.dp)),
                         color = Color.Black
                     ) {
@@ -146,23 +170,40 @@ fun JaxHudScreen(
                     }
                 }
 
+                // RIGHT PANEL
                 Box(
                     modifier = Modifier
                         .weight(0.25f)
                         .fillMaxHeight()
                 ) {
-                    StatusGroup(
-                        items = listOf(
-                            Triple(if (cameraActive) "CAM ON" else "CAM OFF", HudBlue, true),
-                            Triple("FPS 30", HudBlue, true),
-                        ),
-                        alignEnd = true,
-                        modifier = Modifier.align(Alignment.TopEnd)
-                    )
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(end = 2.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        horizontalAlignment = Alignment.End
+                    ) {
+                        StatusGroup(
+                            items = listOf(
+                                Triple(
+                                    "BAT $batteryPercent%",
+                                    if (!isLinked) HudBlueD else if (batteryPercent < 20) HudRed else Green,
+                                    isLinked
+                                ),
+                                Triple(
+                                    "CPU $cpuTemp°",
+                                    if (!isLinked) HudBlueD else if (cpuTemp > 75) HudRed else Green,
+                                    isLinked
+                                ),
+                            ),
+                            alignEnd = true
+                        )
+                    }
 
                     HudJoystick(
                         value = rightJoystickValue,
                         onValueChanged = onRightJoystickChanged,
+                        hapticsEnabled = hapticsEnabled,
                         modifier = Modifier
                             .size(180.dp)
                             .align(Alignment.BottomCenter)
@@ -173,7 +214,7 @@ fun JaxHudScreen(
             Spacer(Modifier.height(8.dp))
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
                 horizontalArrangement = Arrangement.Center
             ) {
                 modes.forEach { robotMode ->
@@ -181,6 +222,7 @@ fun JaxHudScreen(
                         mode = robotMode,
                         selected = mode.command.equals(robotMode.command, ignoreCase = true),
                         onClick = {
+                            if (hapticsEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             mode = robotMode
                             onModeSelected(robotMode.command)
                         }
@@ -200,6 +242,7 @@ fun JaxHudScreen(
                     },
                     modifier = Modifier.size(height = 52.dp, width = 72.dp),
                     onClick = {
+                        if (hapticsEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         onVideoToggle(!videoActive)
                     }
                 )
@@ -210,13 +253,13 @@ fun JaxHudScreen(
             onClick = onSettingsClick,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 16.dp, bottom = 16.dp)
+                .padding(end = 16.dp, bottom = 10.dp)
                 .size(48.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.Settings,
                 contentDescription = "Settings",
-                tint = Color.White.copy(alpha = 0.5f),
+                tint = Color.White,
                 modifier = Modifier.size(32.dp)
             )
         }
@@ -267,18 +310,19 @@ private fun knownModeIcon(command: String): Int? {
 }
 
 @Composable
-private fun HudTopBar(robotName: String, batteryPercent: Int) {
+private fun HudTopBar(robotName: String, batteryPercent: Int, isLinked: Boolean) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth()
     ) {
         Spacer(Modifier.weight(1f))
 
         Text(
-            text = robotName,
+            text = robotName.uppercase(),
             color = HudText,
-            fontSize = 30.sp,
+            fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold,
-            fontFamily = FontFamily.Monospace // Applied new font
+            fontFamily = FontFamily.Monospace,
+            letterSpacing = 2.sp
         )
 
         Spacer(Modifier.weight(1f))
@@ -293,14 +337,16 @@ private fun HudTopBar(robotName: String, batteryPercent: Int) {
         Box(modifier = Modifier.weight(1f))
 
         Text(
-            text = "ROS Link: Connected",
-            color = HudText,
+            text = if (isLinked) "ROS LINK: ONLINE" else "ROS LINK: OFFLINE",
+            color = if (isLinked) HudText else HudText,
             fontSize = 12.sp,
             fontWeight = FontWeight.Normal,
-            fontFamily = FontFamily.Monospace, // Applied new font
+            fontFamily = FontFamily.Monospace,
             modifier = Modifier
                 .wrapContentWidth()
-                .align(Alignment.CenterVertically)
+                .align(Alignment.Bottom)
+                .padding(vertical = 8.dp)
+
         )
 
         Row(
@@ -308,16 +354,7 @@ private fun HudTopBar(robotName: String, batteryPercent: Int) {
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "BAT $batteryPercent%",
-                color = HudText,
-                fontSize = 13.sp,
-                fontFamily = FontFamily.Monospace // Applied new font
-            )
-            Spacer(Modifier.width(6.dp))
-            BatteryGlyph(
-                level = batteryPercent / 100f,
-            )
+
         }
     }
 }
@@ -334,23 +371,40 @@ private fun StatusGroup(
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         items.forEach { (label, color, pulse) ->
-            StatusRow(label = label, color = color, pulse = pulse)
+            StatusRow(label = label, color = color, pulse = pulse, alignEnd = alignEnd)
         }
     }
 }
 
 @Composable
-private fun StatusRow(label: String, color: Color, pulse: Boolean) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        PulsingDot(color = color, animate = pulse)
-        Spacer(Modifier.width(6.dp))
-        Text(
-            text = label,
-            color = HudText,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Medium,
-            fontFamily = FontFamily.Monospace // Applied new font
-        )
+private fun StatusRow(label: String, color: Color, pulse: Boolean, alignEnd: Boolean = false) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.height(14.dp)
+    ) {
+        if (alignEnd) {
+            Text(
+                text = label,
+                color = HudText,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium,
+                fontFamily = FontFamily.Monospace,
+                lineHeight = 10.sp
+            )
+            Spacer(Modifier.width(6.dp))
+            PulsingDot(color = color, animate = pulse)
+        } else {
+            PulsingDot(color = color, animate = pulse)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = label,
+                color = HudText,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium,
+                fontFamily = FontFamily.Monospace,
+                lineHeight = 10.sp
+            )
+        }
     }
 }
 
@@ -373,7 +427,7 @@ private fun PulsingDot(color: Color, animate: Boolean) {
     ) {
         Box(
             modifier = Modifier
-                .size(8.dp)
+                .size(7.dp)
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
@@ -398,7 +452,7 @@ private fun BatteryGlyph(level: Float) {
             modifier = Modifier
                 .fillMaxHeight()
                 .fillMaxWidth(level.coerceIn(0f, 1f))
-                .background(HudBlue)
+                .background(HudBlueD)
         )
     }
 }
@@ -413,7 +467,7 @@ private fun ModeButton(
     Surface(
         onClick = onClick,
         modifier = modifier.clip(RoundedCornerShape(8.dp)),
-        color = if (selected) HudBlue.copy(alpha = 0.3f) else Color(0x44000000),
+        color = if (selected) HudBlueD.copy(alpha = 0.5f) else Color(0x44000000),
         shape = RoundedCornerShape(8.dp)
     ) {
         Box(
@@ -421,10 +475,10 @@ private fun ModeButton(
                 .fillMaxSize()
                 .border(
                     1.dp,
-                    if (selected) HudBlue else HudBorder.copy(alpha = 0.4f),
+                    if (selected) HudBlueD else HudBlueD.copy(alpha = 0.4f),
                     RoundedCornerShape(8.dp)
                 )
-                .padding(horizontal = 6.dp, vertical = 6.dp),
+                .padding(horizontal = 4.dp, vertical = 4.dp),
             contentAlignment = Alignment.Center
         ) {
             icon()
@@ -444,7 +498,7 @@ private fun TextModeButton(
             .height(52.dp)
             .width(90.dp)
             .clip(RoundedCornerShape(8.dp)),
-        color = if (selected) HudBlue.copy(alpha = 0.3f) else Color(0x44000000),
+        color = if (selected) HudBlueD.copy(alpha = 0.3f) else Color(0x44000000),
         shape = RoundedCornerShape(8.dp)
     ) {
         Box(
@@ -452,7 +506,7 @@ private fun TextModeButton(
                 .fillMaxSize()
                 .border(
                     1.dp,
-                    if (selected) HudBlue else HudBorder.copy(alpha = 0.4f),
+                    if (selected) HudBlueD else HudBlueD.copy(alpha = 0.4f),
                     RoundedCornerShape(8.dp)
                 )
                 .padding(horizontal = 6.dp, vertical = 6.dp),
@@ -463,7 +517,7 @@ private fun TextModeButton(
                 color = Color.White,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace, // Applied new font
+                fontFamily = FontFamily.Monospace,
                 letterSpacing = 1.sp
             )
         }
@@ -479,9 +533,11 @@ private fun CameraPlaceholder(modifier: Modifier = Modifier) {
 fun HudJoystick(
     value: Pair<Float, Float>,
     onValueChanged: (x: Float, y: Float) -> Unit,
+    hapticsEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     var dragOffset by remember { mutableStateOf(Offset(value.first, value.second)) }
+    val haptic = LocalHapticFeedback.current
 
     Box(
         modifier = modifier
@@ -493,6 +549,11 @@ fun HudJoystick(
                         val radius = min(size.width, size.height) * 0.45f
                         val delta = start - center
                         val dist = sqrt(delta.x * delta.x + delta.y * delta.y)
+
+                        if (hapticsEnabled && dist >= radius) {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        }
+
                         val clamped = if (dist > radius && dist != 0f) delta * (radius / dist) else delta
                         val normalized = Offset(clamped.x / radius, clamped.y / radius)
                         dragOffset = normalized
@@ -504,6 +565,11 @@ fun HudJoystick(
                         val radius = min(size.width, size.height) * 0.45f
                         val delta = change.position - center
                         val dist = sqrt(delta.x * delta.x + delta.y * delta.y)
+
+                        if (hapticsEnabled && dist >= radius) {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        }
+
                         val clamped = if (dist > radius && dist != 0f) delta * (radius / dist) else delta
                         val normalized = Offset(clamped.x / radius, clamped.y / radius)
                         dragOffset = normalized
@@ -526,7 +592,7 @@ fun HudJoystick(
             val innerR = outerR * 0.35f
 
             drawCircle(
-                color = HudBorder.copy(alpha = 0.9f),
+                color = HudBlueD.copy(alpha = 0.9f),
                 radius = outerR,
                 center = c,
                 style = Stroke(width = 3.dp.toPx())
@@ -540,13 +606,13 @@ fun HudJoystick(
 
             rotate(45f, c) {
                 drawLine(
-                    color = HudBorder.copy(alpha = 0.9f),
+                    color = HudBlueD.copy(alpha = 0.9f),
                     start = Offset(c.x - outerR, c.y),
                     end = Offset(c.x + outerR, c.y),
                     strokeWidth = 2.dp.toPx()
                 )
                 drawLine(
-                    color = HudBorder.copy(alpha = 0.9f),
+                    color = HudBlueD.copy(alpha = 0.9f),
                     start = Offset(c.x, c.y - outerR),
                     end = Offset(c.x, c.y + outerR),
                     strokeWidth = 2.dp.toPx()
@@ -559,7 +625,7 @@ fun HudJoystick(
                 center = c
             )
             drawCircle(
-                color = HudBorder.copy(alpha = 0.8f),
+                color = HudBlueD.copy(alpha = 0.8f),
                 radius = innerR,
                 center = c,
                 style = Stroke(width = 2.dp.toPx())
@@ -570,12 +636,12 @@ fun HudJoystick(
                 c.y + dragOffset.y * (outerR * 0.8f)
             )
             drawCircle(
-                color = Hudglow.copy(alpha = 0.9f),
+                color = HudBlueD.copy(alpha = 0.9f),
                 radius = 15.dp.toPx(),
                 center = knobCenter
             )
             drawCircle(
-                color = Hudglow.copy(alpha = 0.3f),
+                color = HudBlueD.copy(alpha = 0.3f),
                 radius = 10.dp.toPx(),
                 center = knobCenter,
                 style = Stroke(width = 30.dp.toPx())
@@ -621,17 +687,28 @@ fun HudJoystick(
     }
 }
 
-@Preview(widthDp = 891, heightDp = 411, showBackground = true)
+@Preview(name = "Robot Offline", widthDp = 891, heightDp = 411, showBackground = true)
 @Composable
-private fun JaxHudScreenPreview() {
+private fun JaxHudScreenPreviewOffline() {
     JaxHudScreen(
-        modes = listOf(
-            RobotMode("STAND", "stand"),
-            RobotMode("WALK", "walk"),
-            RobotMode("SIT", "sit"),
-            RobotMode("LAY", "lay"),
-            RobotMode("DANCE", "dance")
-        ),
+        isLinked = false,
+        motorsActive = false,
+        batteryPercent = 0,
+        cpuTemp = 0,
+        videoActive = false
+    )
+}
+
+@Preview(name = "Robot Online", widthDp = 891, heightDp = 411, showBackground = true)
+@Composable
+private fun JaxHudScreenPreviewOnline() {
+    JaxHudScreen(
+        isLinked = true,
+        motorsActive = true,
+        imuActive = true,
+        cameraActive = true,
+        batteryPercent = 88,
+        cpuTemp = 42,
         videoActive = true
     )
 }

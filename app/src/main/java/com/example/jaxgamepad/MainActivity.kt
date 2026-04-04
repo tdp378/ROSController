@@ -3,11 +3,7 @@ package com.example.jaxgamepad
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.ActivityInfo
-import android.graphics.Bitmap
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import android.net.Uri
-import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.webkit.WebResourceError
@@ -23,7 +19,6 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -46,14 +41,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -81,9 +76,6 @@ val HudBorder = Color(0xFF1A3A4A)
 val HudBackground = Color(0xFF050B10)
 val HudSurface = Color(0xFF0D1B26)
 val HudText = Color(0xFFE6EEF5)
-val HatchSteel = Color(0xFF15222C)
-val HatchSteelDark = Color(0xFF0B1218)
-val HatchLine = Color(0xFF29414F)
 val Black = Color(0xFF000000)
 
 @Composable
@@ -184,6 +176,8 @@ fun CyberButton(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
+    val haptic = LocalHapticFeedback.current
+
     val scale by animateFloatAsState(
         targetValue = if (isPressed && enabled) 0.96f else 1f,
         animationSpec = tween(durationMillis = 90),
@@ -201,7 +195,10 @@ fun CyberButton(
                 interactionSource = interactionSource,
                 indication = null,
                 enabled = enabled,
-                onClick = onClick
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onClick()
+                }
             ),
         contentAlignment = Alignment.Center,
         content = content
@@ -241,7 +238,7 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
     var hapticsEnabled by remember { mutableStateOf(true) }
 
     val ros = remember { RosbridgeClient() }
-    val activity = LocalContext.current as? MainActivity
+    val activity = LocalContext.current as? ComponentActivity
 
     LaunchedEffect(currentScreen) {
         activity?.let {
@@ -389,6 +386,7 @@ fun JaxDriverScreen(
         leftJoystickValue = moveX.toFloat() to moveY.toFloat(),
         rightJoystickValue = turnZ.toFloat() to 0f,
         videoActive = videoButtonActive,
+        hapticsEnabled = hapticsEnabled,
         onVideoToggle = { enabled ->
             videoButtonActive = enabled
             videoLoaded = false
@@ -920,6 +918,7 @@ fun RobotSetupScreen(
     }
 }
 
+
 @Composable
 fun StartMenuScreen(
     ros: RosbridgeClient,
@@ -927,8 +926,6 @@ fun StartMenuScreen(
     onLaunchGamepad: (RobotConfig) -> Unit,
     onLaunchSetup: () -> Unit
 ) {
-    val context = LocalContext.current
-    var wifiName by remember { mutableStateOf("NOT CONNECTED") }
     var showRobotSelectDialog by remember { mutableStateOf(false) }
 
     if (showRobotSelectDialog) {
@@ -942,21 +939,6 @@ fun StartMenuScreen(
         )
     }
 
-    LaunchedEffect(Unit) {
-        while (true) {
-            wifiName = try {
-                val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-                val caps = cm.getNetworkCapabilities(cm.activeNetwork)
-                if (caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true) {
-                    val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-                    val ssid = wm.connectionInfo.ssid.removeSurrounding("\"")
-                    ssid.ifBlank { "WIFI CONNECTED" }
-                } else "NO WIFI"
-            } catch (e: Exception) { "NO WIFI" }
-            delay(5000)
-        }
-    }
-
     Box(modifier = Modifier.fillMaxSize()) {
         Image(
             painter = painterResource(id = R.drawable.bg_main),
@@ -964,6 +946,7 @@ fun StartMenuScreen(
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop
         )
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -971,6 +954,7 @@ fun StartMenuScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.weight(0.52f))
+
             MainMenuPanel {
                 CyberButton(
                     onClick = { showRobotSelectDialog = true },
@@ -983,7 +967,9 @@ fun StartMenuScreen(
                         contentScale = ContentScale.Fit
                     )
                 }
+
                 Spacer(modifier = Modifier.height(20.dp))
+
                 CyberButton(
                     onClick = onLaunchSetup,
                     modifier = Modifier.fillMaxWidth(.85f)
@@ -995,20 +981,12 @@ fun StartMenuScreen(
                         contentScale = ContentScale.Fit
                     )
                 }
-                Spacer(modifier = Modifier.height(20.dp))
-                Text(
-                    text = "CONNECTED TO: $wifiName",
-                    color = HudBlue.copy(alpha = 0.85f),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Medium,
-                    letterSpacing = 1.6.sp
-                )
             }
+
             Spacer(modifier = Modifier.weight(0.12f))
         }
     }
 }
-
 @Composable
 fun RobotSelectionDialog(
     savedRobots: List<RobotConfig>,
@@ -1645,5 +1623,21 @@ fun PreviewModeEditorRow() {
                 onDelete = {}
             )
         }
+    }
+}
+
+@Preview(showBackground = true, name = "6. Start Menu Screen")
+@Composable
+fun PreviewStartMenuScreen() {
+    JaxGamepadTheme {
+        StartMenuScreen(
+            ros = RosbridgeClient(),
+            savedRobots = listOf(
+                RobotConfig("Jax-Alpha", "192.168.1.50", ""),
+                RobotConfig("ApeX-1", "10.0.0.5", "")
+            ),
+            onLaunchGamepad = {},
+            onLaunchSetup = {}
+        )
     }
 }
