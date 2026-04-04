@@ -82,27 +82,23 @@ val HudSurface = Color(0xFF0D1B26)
 val HudText = Color(0xFFE6EEF5)
 val Black = Color(0xFF000000)
 
-// --- Network Helper Function ---
+// --- Updated Network Helper Function ---
 fun getNetworkDetails(context: Context): Pair<String, String> {
-    val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-
     val ipAddress = try {
         NetworkInterface.getNetworkInterfaces().toList()
             .flatMap { it.inetAddresses.toList() }
             .filter { !it.isLoopbackAddress && it is Inet4Address }
             .map { it.hostAddress ?: "0.0.0.0" }
-            .firstOrNull() ?: "0.0.0.0"
+            .firstOrNull { it.startsWith("192.") } ?: "0.0.0.0"
     } catch (e: Exception) { "0.0.0.0" }
 
-    val info = wifiManager.connectionInfo
-    val ssid = if (info != null && info.networkId != -1) {
-        val name = info.ssid.removeSurrounding("\"")
-        if (name == "<unknown ssid>") "WIFI_CONNECTED" else name
+    val status = if (ipAddress.startsWith("192.")) {
+        "WIFI_CONNECTED"
     } else {
-        "NO_LINK"
+        "WIFI NOT CONNECTED"
     }
 
-    return ssid to ipAddress
+    return status to ipAddress
 }
 
 @Composable
@@ -259,7 +255,6 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
     val context = LocalContext.current
     val robotManager = remember { RobotManager(context) }
 
-    // Persistent Terminal State
     var terminalText by remember { mutableStateOf("") }
     var hasBooted by remember { mutableStateOf(false) }
 
@@ -270,13 +265,12 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
         }
     }
 
-    // Single Boot Sequence
     LaunchedEffect(Unit) {
         if (!hasBooted) {
             val script = "> BOOTING ROS CONTROLLER..." +
                     "\n|> " +
-                    "\n|> WIFI SSID: ${networkInfo.first}" +
-                    "\n|> IP ADDR: ${networkInfo.second}" +
+                    "\n|> LINK: ${networkInfo.first}" +
+                    "\n|> ADDR: ${networkInfo.second}" +
                     "\n|> " +
                     "\n|> STATUS: SYSTEM_READY_"
             val chunks = script.split("|")
@@ -292,10 +286,14 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
         }
     }
 
-    // Silent updates after boot
     LaunchedEffect(networkInfo) {
         if (hasBooted) {
-            terminalText = "> BOOTING JAX_OS...\n> LINK: ${networkInfo.first}\n> ADDR: ${networkInfo.second}\n> STATUS: SYSTEM_READY_"
+            terminalText = "> BOOTING ROS CONTROLLER..." +
+                    "\n> " +
+                    "\n> LINK: ${networkInfo.first}" +
+                    "\n> ADDR: ${networkInfo.second}" +
+                    "\n> " +
+                    "\n> STATUS: SYSTEM_READY_"
         }
     }
 
@@ -1839,35 +1837,5 @@ fun ModeEditDialog(
             HudTextField(value = label, onValueChange = { label = it }, label = "LABEL (e.g. WALK)")
             HudTextField(value = cmd, onValueChange = { cmd = it }, label = "ROS COMMAND (e.g. walk)")
         }
-    }
-}
-
-@Preview(showBackground = true, widthDp = 412, heightDp = 892)
-@Composable
-fun StartMenuScreenPreview() {
-    val sampleRobots = listOf(
-        RobotConfig(
-            name = "ROSbot (Demo)",
-            rosAddress = "192.168.1.100",
-            videoUrl = "http://192.168.1.100:8080/stream?topic=/camera/image_raw",
-            thumbnailPath = "demo_thumb",
-            modes = listOf(
-                RobotMode("STAND", "stand"),
-                RobotMode("WALK", "walk"),
-                RobotMode("SIT", "sit"),
-                RobotMode("LAY", "lay"),
-                RobotMode("SHAKE", "shake"),
-                RobotMode("WAVE", "wave")
-            )
-        )
-    )
-    JaxGamepadTheme {
-        StartMenuScreen(
-            ros = RosbridgeClient(),
-            savedRobots = sampleRobots,
-            terminalText = "> BOOTING JAX_OS...\n> LINK: WIFI_CONNECTED\n> ADDR: 192.168.1.5\n> STATUS: SYSTEM_READY_",
-            onLaunchGamepad = {},
-            onLaunchSetup = {}
-        )
     }
 }
