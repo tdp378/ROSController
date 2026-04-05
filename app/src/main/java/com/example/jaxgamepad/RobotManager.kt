@@ -35,10 +35,13 @@ class RobotManager(context: Context) {
                 }
                 put("modes", modesArray)
 
-                // SAVE INDICATORS
                 val indicatorsArray = JSONArray()
                 robot.enabledIndicators.forEach { indicatorsArray.put(it) }
                 put("enabledIndicators", indicatorsArray)
+
+                // NEW
+                put("totalUptimeSeconds", robot.totalUptimeSeconds)
+                put("totalDistanceMeters", robot.totalDistanceMeters)
             }
 
             array.put(obj)
@@ -57,7 +60,6 @@ class RobotManager(context: Context) {
             for (i in 0 until array.length()) {
                 val obj = array.getJSONObject(i)
 
-                // Load indicators, or default to all if missing
                 val indicatorsJson = obj.optJSONArray("enabledIndicators")
                 val indicatorsList = if (indicatorsJson != null) {
                     List(indicatorsJson.length()) { indicatorsJson.getString(it) }
@@ -70,7 +72,7 @@ class RobotManager(context: Context) {
                         name = obj.optString("name", "Unnamed Robot"),
                         rosAddress = obj.optString("rosAddress", ""),
                         videoUrl = obj.optString("videoUrl", ""),
-                        thumbnailPath = obj.optString("thumbnailPath", null),
+                        thumbnailPath = if (obj.isNull("thumbnailPath")) null else obj.optString("thumbnailPath", null),
                         cmdVelTopic = obj.optJSONObject("cmdVelTopic")?.toTopicBinding(),
                         modeTopic = obj.optJSONObject("modeTopic")?.toTopicBinding(),
                         batteryTopic = obj.optJSONObject("batteryTopic")?.toTopicBinding(),
@@ -78,15 +80,23 @@ class RobotManager(context: Context) {
                         odomTopic = obj.optJSONObject("odomTopic")?.toTopicBinding(),
                         jointStateTopic = obj.optJSONObject("jointStateTopic")?.toTopicBinding(),
                         modes = obj.optJSONArray("modes")?.toRobotModes() ?: emptyList(),
-                        enabledIndicators = indicatorsList
+                        enabledIndicators = indicatorsList,
+
+                        // NEW
+                        totalUptimeSeconds = obj.optLong("totalUptimeSeconds", 0L),
+                        totalDistanceMeters = obj.optDouble("totalDistanceMeters", 0.0)
                     )
                 )
             }
-        } catch (e: Exception) { e.printStackTrace() }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
         return robots
     }
 
-    fun clearAll() { prefs.edit().clear().apply() }
+    fun clearAll() {
+        prefs.edit().clear().apply()
+    }
 }
 
 private fun TopicBinding.toJson(): JSONObject {
@@ -97,7 +107,10 @@ private fun TopicBinding.toJson(): JSONObject {
 }
 
 private fun JSONObject.toTopicBinding(): TopicBinding {
-    return TopicBinding(name = optString("name", ""), type = optString("type", ""))
+    return TopicBinding(
+        name = optString("name", ""),
+        type = optString("type", "")
+    )
 }
 
 private fun JSONArray.toRobotModes(): List<RobotMode> {

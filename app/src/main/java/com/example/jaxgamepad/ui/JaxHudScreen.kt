@@ -64,6 +64,7 @@ private val Green = Color(0xFF00FF00)
 fun JaxHudScreen(
     modifier: Modifier = Modifier,
     robotName: String = "Jax-1",
+    sessionTimeText: String = "00:00:00",
     batteryPercent: Int = 0,
     cpuTemp: Int = 0,
     isLinked: Boolean = false,
@@ -129,7 +130,12 @@ fun JaxHudScreen(
                 .fillMaxSize()
                 .padding(start = 22.dp, top = 8.dp, end = 22.dp, bottom = 0.dp)
         ) {
-            HudTopBar(robotName = robotName, batteryPercent = batteryPercent, isLinked = isLinked)
+            HudTopBar(
+                robotName = robotName,
+                sessionTimeText = sessionTimeText,
+                batteryPercent = batteryPercent,
+                isLinked = isLinked
+            )
 
             Spacer(Modifier.height(4.dp))
 
@@ -537,7 +543,13 @@ private fun knownModeIcon(command: String): Int? {
 }
 
 @Composable
-private fun HudTopBar(robotName: String, batteryPercent: Int, isLinked: Boolean) {
+private fun HudTopBar(
+    robotName: String,
+    sessionTimeText: String,
+    batteryPercent: Int,
+    isLinked: Boolean
+) {
+    // ROBOT NAME (top row)
     Row(modifier = Modifier.fillMaxWidth()) {
         Spacer(Modifier.weight(1f))
         Text(
@@ -550,32 +562,41 @@ private fun HudTopBar(robotName: String, batteryPercent: Int, isLinked: Boolean)
         )
         Spacer(Modifier.weight(1f))
     }
+
+    // SECOND ROW (session + link)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(45.dp),
         verticalAlignment = Alignment.Bottom
     ) {
-        Box(modifier = Modifier.weight(1f))
+        // LEFT: SESSION TIMER
+        Box(
+            modifier = Modifier.weight(1f),
+            contentAlignment = Alignment.BottomStart
+        ) {
+            Text(
+                text = "SESSION: $sessionTimeText",
+                color = HudText.copy(alpha = 0.9f),
+                fontSize = 12.sp,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+        }
+
+        // CENTER: ROS STATUS
         Text(
             text = if (isLinked) "ROS LINK: ONLINE" else "ROS LINK: OFFLINE",
             color = HudText,
             fontSize = 12.sp,
-            fontWeight = FontWeight.Normal,
             fontFamily = FontFamily.Monospace,
-            modifier = Modifier
-                .wrapContentWidth()
-                .align(Alignment.Bottom)
-                .padding(vertical = 8.dp)
+            modifier = Modifier.padding(vertical = 8.dp)
         )
-        Row(
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.CenterVertically
-        ) { }
+
+        // RIGHT SPACER
+        Box(modifier = Modifier.weight(1f))
     }
 }
-
 @Composable
 private fun StatusGroup(
     items: List<Triple<String, Color, Boolean>>,

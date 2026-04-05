@@ -34,8 +34,9 @@ data class RobotConfig(
         RobotMode("WAVE", "wave")
     ),
 
-    // NEW: Session Persistence for LED/Telemetry Selection
-    // This stores the names of the HudIndicator enum entries
-    // Default value ensures new robots start with all indicators visible
-    val enabledIndicators: List<String> = HudIndicator.entries.map { it.name }
+    val enabledIndicators: List<String> = HudIndicator.entries.map { it.name },
+
+    // NEW
+    val totalUptimeSeconds: Long = 0L,
+    val totalDistanceMeters: Double = 0.0
 )

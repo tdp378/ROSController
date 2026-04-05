@@ -4,9 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.net.Uri
-import android.net.wifi.WifiManager
 import android.os.Bundle
-import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -64,8 +62,8 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import coil.compose.AsyncImage
-import com.example.jaxgamepad.ui.JaxHudScreen
 import com.example.jaxgamepad.ui.HudIndicator
+import com.example.jaxgamepad.ui.JaxHudScreen
 import com.example.jaxgamepad.ui.theme.JaxGamepadTheme
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -93,7 +91,9 @@ fun getNetworkDetails(context: Context): Pair<String, String> {
             .filter { !it.isLoopbackAddress && it is Inet4Address }
             .map { it.hostAddress ?: "0.0.0.0" }
             .firstOrNull { it.startsWith("192.") } ?: "0.0.0.0"
-    } catch (e: Exception) { "0.0.0.0" }
+    } catch (e: Exception) {
+        "0.0.0.0"
+    }
 
     val status = if (ipAddress.startsWith("192.")) {
         "WIFI_CONNECTED"
@@ -102,6 +102,21 @@ fun getNetworkDetails(context: Context): Pair<String, String> {
     }
 
     return status to ipAddress
+}
+
+fun formatUptime(totalSeconds: Long): String {
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return "%02d:%02d:%02d".format(hours, minutes, seconds)
+}
+
+fun formatDistance(meters: Double): String {
+    return if (meters >= 1000.0) {
+        String.format("%.2f km", meters / 1000.0)
+    } else {
+        String.format("%.1f m", meters)
+    }
 }
 
 @Composable
@@ -311,7 +326,7 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
     var hasBooted by remember { mutableStateOf(false) }
 
     val networkInfo by produceState(initialValue = "SCANNING" to "0.0.0.0") {
-        while(true) {
+        while (true) {
             value = getNetworkDetails(context)
             delay(5000)
         }
@@ -351,20 +366,22 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
     var savedRobots by remember {
         val loaded = robotManager.loadRobots()
         val cleaned = if (loaded.isEmpty() || loaded.any { it.name.lowercase() == "jax-1" }) {
-            val sample = listOf(RobotConfig(
-                name = "ROSbot (Demo)",
-                rosAddress = "192.168.1.XX",
-                videoUrl = "http://192.168.1.XX:8080/stream?topic=/camera/image_raw",
-                thumbnailPath = "demo_thumb",
-                modes = listOf(
-                    RobotMode("STAND", "stand"),
-                    RobotMode("WALK", "walk"),
-                    RobotMode("LAY", "lay"),
-                    RobotMode("SHAKE", "shake"),
-                    RobotMode("SIT", "sit"),
-                    RobotMode("WAVE", "wave"),
+            val sample = listOf(
+                RobotConfig(
+                    name = "ROSbot (Demo)",
+                    rosAddress = "192.168.1.XX",
+                    videoUrl = "http://192.168.1.XX:8080/stream?topic=/camera/image_raw",
+                    thumbnailPath = "demo_thumb",
+                    modes = listOf(
+                        RobotMode("STAND", "stand"),
+                        RobotMode("WALK", "walk"),
+                        RobotMode("LAY", "lay"),
+                        RobotMode("SHAKE", "shake"),
+                        RobotMode("SIT", "sit"),
+                        RobotMode("WAVE", "wave"),
+                    )
                 )
-            ))
+            )
             robotManager.saveRobots(sample)
             sample
         } else loaded
@@ -372,7 +389,9 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
     }
 
     var currentScreen by remember { mutableStateOf(Screen.Menu) }
-    var currentRobot by remember { mutableStateOf(savedRobots.firstOrNull() ?: RobotConfig("ROSbot (Demo)", "", "")) }
+    var currentRobot by remember {
+        mutableStateOf(savedRobots.firstOrNull() ?: RobotConfig("ROSbot (Demo)", "", ""))
+    }
     var hapticsEnabled by remember { mutableStateOf(true) }
 
     val ros = remember { RosbridgeClient() }
@@ -382,7 +401,8 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
         activity?.let {
             if (currentScreen == Screen.RobotSetup || currentScreen == Screen.Menu) {
                 it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                WindowInsetsControllerCompat(it.window, it.window.decorView).show(WindowInsetsCompat.Type.systemBars())
+                WindowInsetsControllerCompat(it.window, it.window.decorView)
+                    .show(WindowInsetsCompat.Type.systemBars())
             } else {
                 it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
                 reHideSystemBars()
@@ -401,6 +421,7 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
             },
             onLaunchSetup = { currentScreen = Screen.RobotSetup }
         )
+
         Screen.Gamepad -> JaxDriverScreen(
             ros = ros,
             currentRobot = currentRobot,
@@ -420,6 +441,7 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
             reHideSystemBars = reHideSystemBars,
             onBackToMenu = { currentScreen = Screen.Menu }
         )
+
         Screen.RobotSetup -> RobotSetupScreen(
             ros = ros,
             savedRobots = savedRobots,
@@ -461,9 +483,20 @@ fun JaxDriverScreen(
     var showSettings by remember { mutableStateOf(false) }
     var showTerminateVerify by remember { mutableStateOf(false) }
 
+    ros.isConnected
+    val sessionBaseUptime = remember(currentRobot.name) { currentRobot.totalUptimeSeconds }
+    var sessionSeconds by remember(currentRobot.name) { mutableLongStateOf(0L) }
+    var sessionRunning by remember(currentRobot.name) { mutableStateOf(false) }
+    var lastSavedSessionSeconds by remember(currentRobot.name) { mutableLongStateOf(0L) }
+    var wasConnected by remember(currentRobot.name) { mutableStateOf(false) }
+    val liveSessionText = formatUptime(sessionSeconds)
     val activeIndicators = remember(currentRobot) {
         currentRobot.enabledIndicators.mapNotNull {
-            try { HudIndicator.valueOf(it) } catch(e: Exception) { null }
+            try {
+                HudIndicator.valueOf(it)
+            } catch (e: Exception) {
+                null
+            }
         }.toSet()
     }
 
@@ -495,8 +528,58 @@ fun JaxDriverScreen(
                     delay(75)
                 }
             }
-        } else null
+        } else {
+            null
+        }
         onDispose { publishJob?.cancel() }
+    }
+
+    LaunchedEffect(ros.isConnected, currentRobot.name) {
+        if (ros.isConnected) {
+            sessionRunning = true
+            wasConnected = true
+        } else {
+            sessionRunning = false
+
+            if (wasConnected && sessionSeconds > lastSavedSessionSeconds) {
+                onRobotChange(
+                    currentRobot.copy(
+                        totalUptimeSeconds = sessionBaseUptime + sessionSeconds
+                    )
+                )
+                lastSavedSessionSeconds = sessionSeconds
+            }
+
+            wasConnected = false
+        }
+    }
+
+    LaunchedEffect(sessionRunning, currentRobot.name) {
+        while (sessionRunning) {
+            delay(1000)
+            sessionSeconds += 1L
+
+            if (sessionSeconds - lastSavedSessionSeconds >= 10L) {
+                onRobotChange(
+                    currentRobot.copy(
+                        totalUptimeSeconds = sessionBaseUptime + sessionSeconds
+                    )
+                )
+                lastSavedSessionSeconds = sessionSeconds
+            }
+        }
+    }
+
+    DisposableEffect(currentRobot.name) {
+        onDispose {
+            if (sessionSeconds > lastSavedSessionSeconds) {
+                onRobotChange(
+                    currentRobot.copy(
+                        totalUptimeSeconds = sessionBaseUptime + sessionSeconds
+                    )
+                )
+            }
+        }
     }
 
     if (showSettings) {
@@ -506,7 +589,11 @@ fun JaxDriverScreen(
             initialHaptics = hapticsEnabled,
             activeIndicators = activeIndicators,
             onToggleIndicator = { ind ->
-                val newSet = if (activeIndicators.contains(ind)) activeIndicators - ind else activeIndicators + ind
+                val newSet = if (activeIndicators.contains(ind)) {
+                    activeIndicators - ind
+                } else {
+                    activeIndicators + ind
+                }
                 onRobotChange(currentRobot.copy(enabledIndicators = newSet.map { it.name }))
             },
             onDismiss = {
@@ -548,6 +635,7 @@ fun JaxDriverScreen(
 
     JaxHudScreen(
         robotName = currentRobot.name,
+        sessionTimeText = liveSessionText,
         batteryPercent = ros.lastBatteryPercent ?: 0,
         selectedMode = ros.lastModeText ?: currentRobot.modes.firstOrNull()?.command ?: "walk",
         modes = currentRobot.modes,
@@ -581,7 +669,7 @@ fun JaxDriverScreen(
                 if (videoButtonActive) {
                     MjpegWebView(
                         url = currentRobot.videoUrl,
-                        onLoadingStateChanged = { loaded, error ->
+                        onLoadingStateChanged = { _, error ->
                             videoError = error
                         },
                         onUserInteraction = reHideSystemBars
@@ -613,7 +701,8 @@ fun RobotSetupScreen(
     var selectedTabOrStep by remember { mutableIntStateOf(initialSelectedTabOrStep) }
     var maxStepReached by remember(isAdding) { mutableIntStateOf(initialSelectedTabOrStep) }
 
-    val hasNoUserRobots = savedRobots.size <= 1 && savedRobots.any { it.name.contains("Demo", ignoreCase = true) }
+    val hasNoUserRobots =
+        savedRobots.size <= 1 && savedRobots.any { it.name.contains("Demo", ignoreCase = true) }
     var showWelcomeDialog by remember(savedRobots) {
         mutableStateOf(hasNoUserRobots)
     }
@@ -648,7 +737,12 @@ fun RobotSetupScreen(
         onDismiss = { showRosRequirements = false }
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Hardware requires the following environment:", color = HudBlue, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            Text(
+                "Hardware requires the following environment:",
+                color = HudBlue,
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp
+            )
             Text("• ROS2 Humble or later recommended", color = HudText, fontSize = 13.sp)
             Text("• Rosbridge Suite (WebSocket) installed", color = HudText, fontSize = 13.sp)
             Text("• Network visibility to Robot IP:9090", color = HudText, fontSize = 13.sp)
@@ -727,8 +821,8 @@ fun RobotSetupScreen(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-
-                    Text(modifier = Modifier.padding(end = 6.dp),
+                    Text(
+                        modifier = Modifier.padding(end = 6.dp),
                         text = "ADD NEW",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
@@ -796,7 +890,13 @@ fun RobotSetupScreen(
             var addr by remember(editingRobot) { mutableStateOf(initial.rosAddress) }
             var url by remember(editingRobot) { mutableStateOf(initial.videoUrl) }
             var selectedThumbnailUri by remember(editingRobot) {
-                mutableStateOf<Uri?>(if (initial.thumbnailPath != null && initial.thumbnailPath != "demo_thumb") Uri.fromFile(File(initial.thumbnailPath)) else null)
+                mutableStateOf<Uri?>(
+                    if (initial.thumbnailPath != null && initial.thumbnailPath != "demo_thumb") {
+                        Uri.fromFile(File(initial.thumbnailPath))
+                    } else {
+                        null
+                    }
+                )
             }
 
             var allDiscoveredTopics by remember { mutableStateOf<List<RosTopicInfo>>(emptyList()) }
@@ -807,7 +907,9 @@ fun RobotSetupScreen(
             var odomTopic by remember(editingRobot) { mutableStateOf(initial.odomTopic) }
             var jointStateTopic by remember(editingRobot) { mutableStateOf(initial.jointStateTopic) }
 
-            val modes = remember(editingRobot) { mutableStateListOf<RobotMode>().apply { addAll(initial.modes) } }
+            val modes = remember(editingRobot) {
+                mutableStateListOf<RobotMode>().apply { addAll(initial.modes) }
+            }
             var discoverStatus by remember { mutableStateOf<String?>(null) }
             var discovering by remember { mutableStateOf(false) }
 
@@ -829,8 +931,14 @@ fun RobotSetupScreen(
                         modeToEditIndex = null
                     },
                     onSave = { updatedMode ->
-                        if (modeToEditIndex != null) modes[modeToEditIndex!!] = updatedMode
-                        else if (modes.none { it.command.equals(updatedMode.command, ignoreCase = true) }) modes.add(updatedMode)
+                        if (modeToEditIndex != null) {
+                            modes[modeToEditIndex!!] = updatedMode
+                        } else if (modes.none {
+                                it.command.equals(updatedMode.command, ignoreCase = true)
+                            }
+                        ) {
+                            modes.add(updatedMode)
+                        }
                         showModeDialog = false
                         modeToEditIndex = null
                     }
@@ -890,7 +998,8 @@ fun RobotSetupScreen(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .verticalScroll(rememberScrollState()),
+                        .verticalScroll(rememberScrollState())
+                        .padding(top = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     when (selectedTabOrStep) {
@@ -901,7 +1010,7 @@ fun RobotSetupScreen(
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .size(80.dp)
+                                        .size(100.dp)
                                         .border(
                                             width = 1.dp,
                                             color = HudText.copy(alpha = 0.3f),
@@ -936,11 +1045,44 @@ fun RobotSetupScreen(
                                         )
                                     }
                                 }
+
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = "UPTIME : ${formatUptime(initial.totalUptimeSeconds)}",
+                                        color = HudText.copy(alpha = .7f),
+                                        fontSize = 12.sp,
+                                        lineHeight = 14.sp
+                                    )
+
+                                    Text(
+                                        text = "TRAVELED: ${formatDistance(initial.totalDistanceMeters)}",
+                                        color = HudText.copy(alpha = .7f),
+                                        fontSize = 12.sp,
+                                        lineHeight = 14.sp
+                                    )
+                                }
                             }
-                            HudTextField(value = name, onValueChange = { name = it }, label = "ROBOT NAME *")
-                            HudTextField(value = addr, onValueChange = { addr = it }, label = "ROS BRIDGE IP (IP:PORT) *")
-                            HudTextField(value = url, onValueChange = { url = it }, label = "VIDEO SERVER URL (OPTIONAL)")
+
+                            HudTextField(
+                                value = name,
+                                onValueChange = { name = it },
+                                label = "ROBOT NAME *"
+                            )
+                            HudTextField(
+                                value = addr,
+                                onValueChange = { addr = it },
+                                label = "ROS BRIDGE IP (IP:PORT) *"
+                            )
+                            HudTextField(
+                                value = url,
+                                onValueChange = { url = it },
+                                label = "VIDEO SERVER URL (OPTIONAL)"
+                            )
                         }
+
                         1 -> {
                             DiscoverTopicsButton(
                                 discovering = discovering,
@@ -995,7 +1137,10 @@ fun RobotSetupScreen(
                             TopicBindingDropdown(
                                 title = "BATTERY",
                                 selected = batteryTopic,
-                                options = buildTopicOptions(allDiscoveredTopics, listOf("sensor_msgs/BatteryState")),
+                                options = buildTopicOptions(
+                                    allDiscoveredTopics,
+                                    listOf("sensor_msgs/BatteryState")
+                                ),
                                 placeholder = "Select Topic...",
                                 onSelected = { batteryTopic = it }
                             )
@@ -1021,14 +1166,15 @@ fun RobotSetupScreen(
                                 onSelected = { jointStateTopic = it }
                             )
                         }
+
                         2 -> {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.End,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-
-                                Text(modifier = Modifier.padding(end = 6.dp),
+                                Text(
+                                    modifier = Modifier.padding(end = 6.dp),
                                     text = "ADD MODE",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
@@ -1049,6 +1195,7 @@ fun RobotSetupScreen(
                                     Icon(Icons.Default.Add, null, tint = HudBlue)
                                 }
                             }
+
                             modes.forEachIndexed { index, mode ->
                                 ModeEditorRow(
                                     mode = mode,
@@ -1086,8 +1233,11 @@ fun RobotSetupScreen(
                     ) {
                         Image(
                             painter = painterResource(
-                                if (isAdding && selectedTabOrStep > 0) R.drawable.back_button
-                                else R.drawable.cancel_button
+                                if (isAdding && selectedTabOrStep > 0) {
+                                    R.drawable.back_button
+                                } else {
+                                    R.drawable.cancel_button
+                                }
                             ),
                             contentDescription = null,
                             modifier = Modifier.fillMaxSize(),
@@ -1095,7 +1245,9 @@ fun RobotSetupScreen(
                         )
                     }
 
-                    val canGoNext = if (selectedTabOrStep == 0) name.isNotBlank() && addr.isNotBlank() else true
+                    val canGoNext =
+                        if (selectedTabOrStep == 0) name.isNotBlank() && addr.isNotBlank() else true
+
                     CyberButton(
                         enabled = canGoNext,
                         onClick = {
@@ -1105,9 +1257,12 @@ fun RobotSetupScreen(
                                     maxStepReached = selectedTabOrStep
                                 }
                             } else {
-                                val thumb = if (selectedThumbnailUri != null && selectedThumbnailUri.toString() != initial.thumbnailPath) {
-                                    saveImageToInternalStorage(context, selectedThumbnailUri!!)
-                                } else initial.thumbnailPath
+                                val thumb =
+                                    if (selectedThumbnailUri != null && selectedThumbnailUri.toString() != initial.thumbnailPath) {
+                                        saveImageToInternalStorage(context, selectedThumbnailUri!!)
+                                    } else {
+                                        initial.thumbnailPath
+                                    }
 
                                 val newConfig = RobotConfig(
                                     name = name,
@@ -1120,8 +1275,12 @@ fun RobotSetupScreen(
                                     imuTopic = imuTopic,
                                     odomTopic = odomTopic,
                                     jointStateTopic = jointStateTopic,
-                                    modes = modes.toList()
+                                    modes = modes.toList(),
+                                    enabledIndicators = initial.enabledIndicators,
+                                    totalUptimeSeconds = initial.totalUptimeSeconds,
+                                    totalDistanceMeters = initial.totalDistanceMeters
                                 )
+
                                 onSave(editingRobot?.name, newConfig)
                                 editingRobot = null
                                 isAdding = false
@@ -1137,6 +1296,7 @@ fun RobotSetupScreen(
                             isAdding && selectedTabOrStep == 2 -> R.drawable.finish_button
                             else -> R.drawable.save_button
                         }
+
                         Image(
                             painter = painterResource(imgRes),
                             contentDescription = null,
@@ -1149,7 +1309,6 @@ fun RobotSetupScreen(
         }
     }
 }
-
 
 @Composable
 fun DiscoverTopicsButton(
@@ -1469,6 +1628,7 @@ fun HudTextField(value: String, onValueChange: (String) -> Unit, label: String) 
         shape = RoundedCornerShape(8.dp)
     )
 }
+
 @Composable
 fun MainMenuPanel(content: @Composable ColumnScope.() -> Unit) {
     Box(
@@ -1482,8 +1642,7 @@ fun MainMenuPanel(content: @Composable ColumnScope.() -> Unit) {
                 .fillMaxWidth()
                 .aspectRatio(1.5f),
             contentAlignment = Alignment.Center
-        )
-        {
+        ) {
             Column(
                 modifier = Modifier
                     .matchParentSize()
@@ -1699,7 +1858,12 @@ fun MjpegWebView(
                     override fun onPageFinished(view: WebView?, url: String?) {
                         onLoadingStateChanged(true, null)
                     }
-                    override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
+
+                    override fun onReceivedError(
+                        view: WebView?,
+                        request: WebResourceRequest?,
+                        error: WebResourceError?
+                    ) {
                         if (request?.isForMainFrame == true) {
                             onLoadingStateChanged(false, error?.description?.toString())
                             view?.visibility = android.view.View.INVISIBLE
@@ -1714,7 +1878,10 @@ fun MjpegWebView(
                 loadUrl(url)
             }
         },
-        update = { it.visibility = android.view.View.VISIBLE; it.loadUrl(url) },
+        update = {
+            it.visibility = android.view.View.VISIBLE
+            it.loadUrl(url)
+        },
         modifier = modifier
     )
 }
@@ -1744,7 +1911,11 @@ fun VideoFeedContainer(
                 val secondaryMsg = if (videoUrl.isNotBlank()) "CHECK NETWORK STATUS" else "SERVER URL REQUIRED"
 
                 Icon(
-                    imageVector = if (videoUrl.isNotBlank()) Icons.Default.SignalWifiStatusbarConnectedNoInternet4 else Icons.Default.VideocamOff,
+                    imageVector = if (videoUrl.isNotBlank()) {
+                        Icons.Default.SignalWifiStatusbarConnectedNoInternet4
+                    } else {
+                        Icons.Default.VideocamOff
+                    },
                     contentDescription = null,
                     tint = HudBlue.copy(alpha = 0.5f),
                     modifier = Modifier.size(42.dp)
@@ -1864,13 +2035,11 @@ fun SettingsDialog(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-
             SettingsRockerRow(
                 label = "ENABLE HAPTIC FEEDBACK",
                 checked = haptics,
                 onToggle = { haptics = it }
             )
-
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -2027,6 +2196,49 @@ fun ModeEditDialog(
     }
 }
 
+@Preview(name = "Robot Setup - List", showBackground = true, device = "spec:width=411dp,height=891dp")
+@Composable
+fun RobotSetupScreenPreview() {
+    val sampleRobots = listOf(
+        RobotConfig(
+            name = "ROSbot (Demo)",
+            rosAddress = "192.168.1.100",
+            videoUrl = "http://192.168.1.100:8080/stream?topic=/camera/image_raw",
+            thumbnailPath = "demo_thumb"
+        ),
+        RobotConfig(
+            name = "Unitree Go1",
+            rosAddress = "192.168.12.1",
+            videoUrl = "http://192.168.12.1:8080/stream"
+        )
+    )
+    JaxGamepadTheme {
+        RobotSetupScreen(
+            ros = RosbridgeClient(),
+            savedRobots = sampleRobots,
+            onSave = { _, _ -> },
+            onDelete = {},
+            onBack = {}
+        )
+    }
+}
+
+@Preview(name = "Robot Setup - Add New", showBackground = true, device = "spec:width=411dp,height=891dp")
+@Composable
+fun RobotSetupScreenAddPreview() {
+    JaxGamepadTheme {
+        RobotSetupScreen(
+            ros = RosbridgeClient(),
+            savedRobots = emptyList(),
+            onSave = { _, _ -> },
+            onDelete = {},
+            onBack = {},
+            initialIsAdding = true,
+            initialSelectedTabOrStep = 0
+        )
+    }
+}
+
 @Preview(device = "spec:width=1280dp,height=800dp,orientation=landscape")
 @Composable
 fun SettingsDialogPreview() {
@@ -2074,5 +2286,3 @@ fun EditModeDialogPreview() {
         )
     }
 }
-
-
