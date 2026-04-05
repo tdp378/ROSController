@@ -42,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -140,6 +141,7 @@ fun CyberDialog(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .padding(horizontal = 12.dp)
                 .shadow(
                     elevation = 20.dp,
                     shape = RoundedCornerShape(16.dp),
@@ -148,21 +150,27 @@ fun CyberDialog(
                 )
                 .border(
                     width = 1.5.dp,
-                    brush = Brush.linearGradient(listOf(HudBlue, Color(0xFF008CFF), HudBlue)),
+                    brush = Brush.linearGradient(
+                        listOf(HudBlue, Color(0xFF008CFF), HudBlue)
+                    ),
                     shape = RoundedCornerShape(16.dp)
                 )
                 .background(
                     brush = Brush.verticalGradient(
                         listOf(
                             Color(0xFF020617).copy(alpha = 0.95f),
-                            Color(0xFF020617).copy(alpha = 0.85f)
+                            Color(0xFF020617).copy(alpha = 0.88f)
                         )
                     ),
                     shape = RoundedCornerShape(16.dp)
                 )
-                .padding(20.dp)
+                .padding(10.dp)
         ) {
-            Column {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 560.dp)
+            ) {
                 Text(
                     text = title,
                     color = HudText,
@@ -173,12 +181,16 @@ fun CyberDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                if (useTerminalLook) {
-                    CyberTerminalBox {
+                Column(
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    if (useTerminalLook) {
+                        CyberTerminalBox { content() }
+                    } else {
                         content()
                     }
-                } else {
-                    content()
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))
@@ -188,8 +200,15 @@ fun CyberDialog(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("Not Now", color = Color.Gray)
+                    TextButton(
+                        onClick = onDismiss,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            "NOT NOW",
+                            color = HudText.copy(alpha = 0.75f),
+                            fontWeight = FontWeight.Medium
+                        )
                     }
 
                     Spacer(modifier = Modifier.width(12.dp))
@@ -197,14 +216,17 @@ fun CyberDialog(
                     CyberButton(
                         onClick = onConfirm,
                         modifier = Modifier
-                            .height(45.dp)
+                            .height(35.dp)
                             .width(130.dp)
                     ) {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .border(1.dp, HudBlue, RoundedCornerShape(10.dp))
-                                .background(HudBlue.copy(alpha = 0.1f), RoundedCornerShape(10.dp)),
+                                .background(
+                                    HudBlue.copy(alpha = 0.10f),
+                                    RoundedCornerShape(10.dp)
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
@@ -384,7 +406,16 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
             currentRobot = currentRobot,
             savedRobots = savedRobots,
             hapticsEnabled = hapticsEnabled,
-            onRobotChange = { newRobot -> currentRobot = newRobot },
+            onRobotChange = { newRobot ->
+                currentRobot = newRobot
+                val list = savedRobots.toMutableList()
+                val idx = list.indexOfFirst { it.name == newRobot.name }
+                if (idx != -1) {
+                    list[idx] = newRobot
+                    savedRobots = list
+                    robotManager.saveRobots(list)
+                }
+            },
             onHapticsChange = { hapticsEnabled = it },
             reHideSystemBars = reHideSystemBars,
             onBackToMenu = { currentScreen = Screen.Menu }
@@ -430,8 +461,10 @@ fun JaxDriverScreen(
     var showSettings by remember { mutableStateOf(false) }
     var showTerminateVerify by remember { mutableStateOf(false) }
 
-    var activeIndicators by remember {
-        mutableStateOf(setOf(HudIndicator.ROS_LINK, HudIndicator.MOTORS, HudIndicator.IMU, HudIndicator.CAMERA, HudIndicator.BATTERY, HudIndicator.CPU))
+    val activeIndicators = remember(currentRobot) {
+        currentRobot.enabledIndicators.mapNotNull {
+            try { HudIndicator.valueOf(it) } catch(e: Exception) { null }
+        }.toSet()
     }
 
     var videoLoadedManually by remember(currentRobot.name) { mutableStateOf(false) }
@@ -473,7 +506,8 @@ fun JaxDriverScreen(
             initialHaptics = hapticsEnabled,
             activeIndicators = activeIndicators,
             onToggleIndicator = { ind ->
-                activeIndicators = if (activeIndicators.contains(ind)) activeIndicators - ind else activeIndicators + ind
+                val newSet = if (activeIndicators.contains(ind)) activeIndicators - ind else activeIndicators + ind
+                onRobotChange(currentRobot.copy(enabledIndicators = newSet.map { it.name }))
             },
             onDismiss = {
                 showSettings = false
@@ -1420,10 +1454,9 @@ fun HudTextField(value: String, onValueChange: (String) -> Unit, label: String) 
             )
         },
         textStyle = TextStyle(color = HudText, fontSize = 14.sp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(60.dp),
+        modifier = Modifier.fillMaxWidth(),
         singleLine = true,
+        minLines = 1,
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = HudBlue,
             unfocusedBorderColor = HudText.copy(alpha = 0.4f),
@@ -1436,7 +1469,6 @@ fun HudTextField(value: String, onValueChange: (String) -> Unit, label: String) 
         shape = RoundedCornerShape(8.dp)
     )
 }
-
 @Composable
 fun MainMenuPanel(content: @Composable ColumnScope.() -> Unit) {
     Box(
@@ -1721,21 +1753,21 @@ fun VideoFeedContainer(
                 Text(
                     text = primaryMsg,
                     color = HudBlue,
-                    fontSize = 12.sp,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp
                 )
                 Text(
                     text = secondaryMsg,
                     color = HudBlue.copy(alpha = 0.6f),
-                    fontSize = 10.sp
+                    fontSize = 8.sp
                 )
                 if (videoUrl.isNotBlank()) {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = videoUrl,
                         color = HudText.copy(alpha = 0.4f),
-                        fontSize = 10.sp,
+                        fontSize = 8.sp,
                         fontWeight = FontWeight.Light
                     )
                 }
@@ -1830,78 +1862,38 @@ fun SettingsDialog(
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // GLOBAL CONFIG
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(HudBlue.copy(alpha = 0.05f))
-                    .border(1.dp, HudBlue.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
-                    .padding(8.dp)
-            ) {
-                Checkbox(
-                    checked = haptics,
-                    onCheckedChange = { haptics = it },
-                    colors = CheckboxDefaults.colors(
-                        checkedColor = HudBlue,
-                        uncheckedColor = HudBlue.copy(alpha = 0.4f),
-                        checkmarkColor = HudBackground
-                    )
-                )
-                Text(
-                    text = "ENABLE HAPTIC FEEDBACK",
-                    color = HudText,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
 
-            Text(
-                text = "HUD INDICATOR VISIBILITY",
-                color = HudBlue,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp
+            SettingsRockerRow(
+                label = "ENABLE HAPTIC FEEDBACK",
+                checked = haptics,
+                onToggle = { haptics = it }
             )
 
-            // COMPACT GRID LAYOUT
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // LEFT COLUMN (LEDs)
                 Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(HudBlue.copy(alpha = 0.05f))
-                        .border(1.dp, HudBlue.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
-                        .padding(vertical = 2.dp)
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     val leds = listOf(HudIndicator.ROS_LINK, HudIndicator.MOTORS, HudIndicator.IMU, HudIndicator.CAMERA)
                     leds.forEach { indicator ->
-                        IndicatorToggleRow(indicator, activeIndicators, onToggleIndicator)
+                        IndicatorRockerRow(indicator, activeIndicators, onToggleIndicator)
                     }
                 }
 
-                // RIGHT COLUMN (TELEMETRY)
                 Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(HudBlue.copy(alpha = 0.05f))
-                        .border(1.dp, HudBlue.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
-                        .padding(vertical = 2.dp)
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     val telemetry = listOf(HudIndicator.BATTERY, HudIndicator.CPU)
                     telemetry.forEach { indicator ->
-                        IndicatorToggleRow(indicator, activeIndicators, onToggleIndicator)
+                        IndicatorRockerRow(indicator, activeIndicators, onToggleIndicator)
                     }
-                    // Empty rows to match height
-                    Spacer(modifier = Modifier.height(72.dp))
                 }
             }
         }
@@ -1909,33 +1901,96 @@ fun SettingsDialog(
 }
 
 @Composable
-fun IndicatorToggleRow(
+fun SettingsRockerRow(
+    label: String,
+    checked: Boolean,
+    onToggle: (Boolean) -> Unit
+) {
+    Surface(
+        onClick = { onToggle(!checked) },
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(42.dp)
+            .clip(RoundedCornerShape(6.dp)),
+        color = Color.Black.copy(alpha = 0.2f),
+        border = BorderStroke(1.dp, HudBlue.copy(alpha = 0.1f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = label,
+                color = if (checked) HudText else Color.Gray,
+                fontSize = 9.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold
+            )
+
+            Switch(
+                checked = checked,
+                onCheckedChange = { onToggle(it) },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = HudBlue,
+                    checkedTrackColor = HudBlue.copy(alpha = 0.3f),
+                    uncheckedThumbColor = Color.DarkGray,
+                    uncheckedTrackColor = Color.Black.copy(alpha = 0.4f),
+                    uncheckedBorderColor = Color.Transparent
+                ),
+                modifier = Modifier.scale(0.6f)
+            )
+        }
+    }
+}
+
+@Composable
+fun IndicatorRockerRow(
     indicator: HudIndicator,
     activeIndicators: Set<HudIndicator>,
     onToggle: (HudIndicator) -> Unit
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+    val isEnabled = activeIndicators.contains(indicator)
+
+    Surface(
+        onClick = { onToggle(indicator) },
         modifier = Modifier
             .fillMaxWidth()
-            .height(36.dp)
-            .clickable { onToggle(indicator) }
+            .height(30.dp)
+            .clip(RoundedCornerShape(6.dp)),
+        color = Color.Black.copy(alpha = 0.2f),
+        border = BorderStroke(1.dp, HudBlue.copy(alpha = 0.1f))
     ) {
-        Checkbox(
-            checked = activeIndicators.contains(indicator),
-            onCheckedChange = { onToggle(indicator) },
-            colors = CheckboxDefaults.colors(
-                checkedColor = HudBlue,
-                uncheckedColor = HudBlue.copy(alpha = 0.4f),
-                checkmarkColor = HudBackground
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = indicator.name.replace("_", " "),
+                color = if (isEnabled) HudText else Color.Gray,
+                fontSize = 9.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold
             )
-        )
-        Text(
-            text = indicator.name.replace("_", " "),
-            color = HudText,
-            fontSize = 9.sp,
-            fontFamily = FontFamily.Monospace
-        )
+
+            Switch(
+                checked = isEnabled,
+                onCheckedChange = null,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = HudBlue,
+                    checkedTrackColor = HudBlue.copy(alpha = 0.3f),
+                    uncheckedThumbColor = Color.DarkGray,
+                    uncheckedTrackColor = Color.Black.copy(alpha = 0.4f),
+                    uncheckedBorderColor = Color.Transparent
+                ),
+                modifier = Modifier.scale(0.6f)
+            )
+        }
     }
 }
 
@@ -1967,7 +2022,57 @@ fun ModeEditDialog(
                 fontWeight = FontWeight.Bold
             )
             HudTextField(value = label, onValueChange = { label = it }, label = "LABEL (e.g. WALK)")
-            HudTextField(value = cmd, onValueChange = { cmd = it }, label = "ROS COMMAND (e.g. walk)")
+            HudTextField(value = cmd, onValueChange = { cmd = it }, label = "COMMAND (e.g. walk)")
         }
     }
 }
+
+@Preview(device = "spec:width=1280dp,height=800dp,orientation=landscape")
+@Composable
+fun SettingsDialogPreview() {
+    val sampleRobot = RobotConfig(
+        name = "ROSbot (Demo)",
+        rosAddress = "192.168.1.100",
+        videoUrl = "http://192.168.1.100:8080/stream?topic=/camera/image_raw",
+        thumbnailPath = "demo_thumb"
+    )
+    JaxGamepadTheme {
+        SettingsDialog(
+            savedRobots = listOf(sampleRobot),
+            currentRobot = sampleRobot,
+            initialHaptics = true,
+            activeIndicators = setOf(HudIndicator.ROS_LINK, HudIndicator.BATTERY, HudIndicator.CAMERA),
+            onToggleIndicator = {},
+            onDismiss = {},
+            onSave = { _, _ -> },
+            onDisconnect = {},
+            onBackToMenu = {}
+        )
+    }
+}
+
+@Preview(name = "New Mode Dialog", device = "spec:width=1280dp,height=800dp,orientation=landscape")
+@Composable
+fun NewModeDialogPreview() {
+    JaxGamepadTheme {
+        ModeEditDialog(
+            initialMode = null,
+            onDismiss = {},
+            onSave = {}
+        )
+    }
+}
+
+@Preview(name = "Edit Mode Dialog", device = "spec:width=1280dp,height=800dp,orientation=landscape")
+@Composable
+fun EditModeDialogPreview() {
+    JaxGamepadTheme {
+        ModeEditDialog(
+            initialMode = RobotMode("WALK", "walk"),
+            onDismiss = {},
+            onSave = {}
+        )
+    }
+}
+
+

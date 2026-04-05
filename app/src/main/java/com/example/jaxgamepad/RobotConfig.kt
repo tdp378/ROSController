@@ -1,5 +1,7 @@
 package com.example.jaxgamepad
 
+import com.example.jaxgamepad.ui.HudIndicator
+
 data class TopicBinding(
     val name: String,
     val type: String
@@ -30,5 +32,10 @@ data class RobotConfig(
         RobotMode("LAY", "lay"),
         RobotMode("SHAKE", "shake"),
         RobotMode("WAVE", "wave")
-    )
+    ),
+
+    // NEW: Session Persistence for LED/Telemetry Selection
+    // This stores the names of the HudIndicator enum entries
+    // Default value ensures new robots start with all indicators visible
+    val enabledIndicators: List<String> = HudIndicator.entries.map { it.name }
 )

@@ -1,5 +1,6 @@
 package com.example.jaxgamepad.ui
 
+import android.annotation.SuppressLint
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -11,7 +12,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -23,13 +26,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.consumePositionChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
@@ -53,7 +59,6 @@ private val HudBorder = Color(0xFF27719A)
 private val HudGlow = Color(0xFF4DB9DB)
 private val HudRed = Color(0xFFFF3D00)
 private val Green = Color(0xFF00FF00)
-
 
 @Composable
 fun JaxHudScreen(
@@ -93,7 +98,9 @@ fun JaxHudScreen(
         )
     }
 
-    // Filter LEDs based on user choice
+    var heightSliderValue by remember { mutableStateOf(0.5f) }
+    var speedSliderValue by remember { mutableStateOf(0.5f) }
+
     val activeLedList = remember(enabledIndicators, isLinked, motorsActive, imuActive, cameraActive) {
         mutableListOf<Triple<String, Color, Boolean>>().apply {
             if (enabledIndicators.contains(HudIndicator.ROS_LINK))
@@ -132,10 +139,10 @@ fun JaxHudScreen(
                     .fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // LEFT PANEL (Status Indicators)
+                // LEFT PANEL
                 Box(
                     modifier = Modifier
-                        .weight(0.25f)
+                        .weight(0.20f)
                         .fillMaxHeight()
                 ) {
                     Column(
@@ -144,10 +151,7 @@ fun JaxHudScreen(
                             .padding(start = 2.dp),
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        StatusGroup(
-                            items = activeLedList,
-                            alignEnd = false
-                        )
+                        StatusGroup(items = activeLedList, alignEnd = false)
                     }
 
                     HudJoystick(
@@ -155,28 +159,37 @@ fun JaxHudScreen(
                         onValueChanged = onLeftJoystickChanged,
                         hapticsEnabled = hapticsEnabled,
                         modifier = Modifier
-                            .size(180.dp)
-                            .align(Alignment.BottomCenter)
+                            .size(170.dp)
+                            .align(Alignment.BottomStart)
+                            .offset(x = (-10).dp)
+                            .offset(y = (22).dp)
+                    )
+
+                    HudVerticalSlider(
+                        value = heightSliderValue,
+                        onValueChange = { heightSliderValue = it },
+                        label = "HGT",
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .fillMaxHeight()
+                            .width(40.dp)
+                            .padding(bottom = 20.dp)
                     )
                 }
 
-                // CENTER PANEL (Video Feed)
+                // CENTER PANEL
                 Column(
                     modifier = Modifier
-                        .weight(0.66f)
+                        .weight(0.40f)
                         .fillMaxHeight(),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Top
+                    verticalArrangement = Arrangement.Center
                 ) {
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .aspectRatio(1.9f)
-                            .border(
-                                1.dp,
-                                HudBlueD.copy(alpha = 0.5f),
-                                RoundedCornerShape(12.dp)
-                            )
+                            .aspectRatio(1.7f)
+                            .border(1.dp, HudBlueD.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                             .clip(RoundedCornerShape(12.dp)),
                         color = Color.Black
                     ) {
@@ -184,10 +197,10 @@ fun JaxHudScreen(
                     }
                 }
 
-                // RIGHT PANEL (Telemetry & Battery)
+                // RIGHT PANEL
                 Box(
                     modifier = Modifier
-                        .weight(0.25f)
+                        .weight(0.20f)
                         .fillMaxHeight()
                 ) {
                     Column(
@@ -197,20 +210,13 @@ fun JaxHudScreen(
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                         horizontalAlignment = Alignment.End
                     ) {
-                        // Filtered Telemetry List
                         val telemetryItems = mutableListOf<Triple<String, Color, Boolean>>().apply {
-                            if (enabledIndicators.contains(HudIndicator.BATTERY)) {
-                                add(Triple("BAT $batteryPercent%", if (!isLinked) HudBlueD else if (batteryPercent < 20) HudRed else Green, isLinked))
-                            }
-                            if (enabledIndicators.contains(HudIndicator.CPU)) {
-                                add(Triple("CPU $cpuTemp°", if (!isLinked) HudBlueD else if (cpuTemp > 75) HudRed else Green, isLinked))
-                            }
+                            if (enabledIndicators.contains(HudIndicator.BATTERY))
+                                add(Triple("BATTERY $batteryPercent%", if (!isLinked) HudBlueD else if (batteryPercent < 20) HudRed else Green, isLinked))
+                            if (enabledIndicators.contains(HudIndicator.CPU))
+                                add(Triple("CPU TEMP $cpuTemp°", if (!isLinked) HudBlueD else if (cpuTemp > 75) HudRed else Green, isLinked))
                         }
-
-                        StatusGroup(
-                            items = telemetryItems,
-                            alignEnd = true
-                        )
+                        StatusGroup(items = telemetryItems, alignEnd = true)
                     }
 
                     HudJoystick(
@@ -218,8 +224,21 @@ fun JaxHudScreen(
                         onValueChanged = onRightJoystickChanged,
                         hapticsEnabled = hapticsEnabled,
                         modifier = Modifier
-                            .size(180.dp)
-                            .align(Alignment.BottomCenter)
+                            .size(170.dp)
+                            .align(Alignment.BottomEnd)
+                            .offset(x = 10.dp)
+                            .offset(y = (22).dp)
+                    )
+
+                    HudVerticalSlider(
+                        value = speedSliderValue,
+                        onValueChange = { speedSliderValue = it },
+                        label = "SPD",
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .fillMaxHeight()
+                            .width(40.dp)
+                            .padding(bottom = 20.dp)
                     )
                 }
             }
@@ -227,7 +246,9 @@ fun JaxHudScreen(
             Spacer(Modifier.height(8.dp))
 
             Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
                 horizontalArrangement = Arrangement.Center
             ) {
                 modes.forEach { robotMode ->
@@ -262,7 +283,6 @@ fun JaxHudScreen(
             }
         }
 
-        // TERMINATE/POWER BUTTON (LEFT)
         IconButton(
             onClick = onTerminateClick,
             modifier = Modifier
@@ -271,14 +291,13 @@ fun JaxHudScreen(
                 .size(48.dp)
         ) {
             Icon(
-                imageVector = Icons.Default.PowerSettingsNew,
-                contentDescription = "Terminate Session",
+                Icons.Default.PowerSettingsNew,
+                "Terminate",
                 tint = HudRed.copy(alpha = 0.8f),
                 modifier = Modifier.size(32.dp)
             )
         }
 
-        // SETTINGS BUTTON (RIGHT)
         IconButton(
             onClick = onSettingsClick,
             modifier = Modifier
@@ -287,8 +306,8 @@ fun JaxHudScreen(
                 .size(48.dp)
         ) {
             Icon(
-                imageVector = Icons.Default.Settings,
-                contentDescription = "Settings",
+                Icons.Default.Settings,
+                "Settings",
                 tint = Color.White,
                 modifier = Modifier.size(32.dp)
             )
@@ -296,22 +315,204 @@ fun JaxHudScreen(
     }
 }
 
+@SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
-private fun DynamicModeButton(
-    mode: RobotMode,
-    selected: Boolean,
-    onClick: () -> Unit
+fun HudVerticalSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
 ) {
-    val knownIcon = knownModeIcon(mode.command)
+    val clampedValue = value.coerceIn(0f, 1f)
+    val haptic = LocalHapticFeedback.current
 
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = label,
+            color = if (enabled) HudText else HudText.copy(alpha = 0.4f),
+            fontSize = 9.sp,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        BoxWithConstraints(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(vertical = 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            val density = LocalDensity.current
+            val trackHeight = maxHeight
+            val trackHeightPx = with(density) { trackHeight.toPx() }
+
+            val thumbHeight = 28.dp
+            val thumbWidth = 28.dp
+            val railWidth = 14.dp
+
+            val thumbHeightPx = with(density) { thumbHeight.toPx() }
+            val usableHeightPx = (trackHeightPx - thumbHeightPx).coerceAtLeast(1f)
+            val thumbOffsetPx = (1f - clampedValue) * usableHeightPx
+            val thumbOffsetDp = with(density) { thumbOffsetPx.toDp() }
+
+            fun positionToValue(y: Float): Float {
+                val raw = 1f - ((y - thumbHeightPx / 2f) / usableHeightPx)
+                return raw.coerceIn(0f, 1f)
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(enabled) {
+                        detectVerticalDragGestures(
+                            onDragStart = { offset ->
+                                if (enabled) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onValueChange(positionToValue(offset.y))
+                                }
+                            },
+                            onVerticalDrag = { change, _ ->
+                                if (enabled) {
+                                    onValueChange(positionToValue(change.position.y))
+                                    change.consumePositionChange()
+                                }
+                            }
+                        )
+                    }
+            ) {
+                // outer rail glow frame
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .fillMaxHeight()
+                        .width(railWidth + 8.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.Black.copy(alpha = 0.25f))
+                        .border(
+                            1.dp,
+                            HudBlueD.copy(alpha = 0.35f),
+                            RoundedCornerShape(12.dp)
+                        )
+                )
+
+                // inactive rail
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .fillMaxHeight()
+                        .width(railWidth)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(HudBlueD.copy(alpha = 0.18f))
+                )
+
+                // active fill
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .width(railWidth)
+                        .fillMaxHeight(clampedValue)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    HudBlueD.copy(alpha = 0.20f),
+                                    HudBlueD.copy(alpha = 0.55f),
+                                    HudBlueD.copy(alpha = 0.95f)
+                                )
+                            )
+                        )
+                )
+
+                // thumb glow
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset(y = thumbOffsetDp)
+                        .size(width = thumbWidth + 8.dp, height = thumbHeight + 8.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(HudBlueD.copy(alpha = 0.15f))
+                )
+
+                // thumb
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset(y = thumbOffsetDp)
+                        .size(width = thumbWidth, height = thumbHeight)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color(0xFF1C3E5A),
+                                    HudBlueD,
+                                    Color(0xFF0E6FB3)
+                                )
+                            )
+                        )
+                        .border(
+                            1.dp,
+                            HudText.copy(alpha = 0.35f),
+                            RoundedCornerShape(6.dp)
+                        )
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(width = 14.dp, height = 3.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(HudText.copy(alpha = 0.95f))
+                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .offset(y = (-5).dp)
+                            .size(width = 14.dp, height = 2.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(HudText.copy(alpha = 0.55f))
+                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .offset(y = 5.dp)
+                            .size(width = 14.dp, height = 2.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(HudText.copy(alpha = 0.55f))
+                    )
+                }
+
+                Text(
+                    text = "${(clampedValue * 100).toInt()}",
+                    color = HudText.copy(alpha = 0.85f),
+                    fontSize = 8.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 2.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DynamicModeButton(mode: RobotMode, selected: Boolean, onClick: () -> Unit) {
+    val knownIcon = knownModeIcon(mode.command)
     if (knownIcon != null) {
         ModeButton(
             selected = selected,
             icon = {
                 Image(
-                    painter = painterResource(id = knownIcon),
-                    contentDescription = mode.label,
-                    modifier = Modifier.fillMaxSize(),
+                    painterResource(id = knownIcon),
+                    mode.label,
+                    Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit
                 )
             },
@@ -319,11 +520,7 @@ private fun DynamicModeButton(
             onClick = onClick
         )
     } else {
-        TextModeButton(
-            label = mode.label,
-            selected = selected,
-            onClick = onClick
-        )
+        TextModeButton(label = mode.label, selected = selected, onClick = onClick)
     }
 }
 
@@ -341,23 +538,18 @@ private fun knownModeIcon(command: String): Int? {
 
 @Composable
 private fun HudTopBar(robotName: String, batteryPercent: Int, isLinked: Boolean) {
-    Row(
-        modifier = Modifier.fillMaxWidth()
-    ) {
+    Row(modifier = Modifier.fillMaxWidth()) {
         Spacer(Modifier.weight(1f))
-
         Text(
-            text = robotName.uppercase(),
+            robotName.uppercase(),
             color = HudText,
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold,
             fontFamily = FontFamily.Monospace,
             letterSpacing = 2.sp
         )
-
         Spacer(Modifier.weight(1f))
     }
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -365,7 +557,6 @@ private fun HudTopBar(robotName: String, batteryPercent: Int, isLinked: Boolean)
         verticalAlignment = Alignment.Bottom
     ) {
         Box(modifier = Modifier.weight(1f))
-
         Text(
             text = if (isLinked) "ROS LINK: ONLINE" else "ROS LINK: OFFLINE",
             color = HudText,
@@ -377,14 +568,11 @@ private fun HudTopBar(robotName: String, batteryPercent: Int, isLinked: Boolean)
                 .align(Alignment.Bottom)
                 .padding(vertical = 8.dp)
         )
-
         Row(
             modifier = Modifier.weight(1f),
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Right-side Topbar empty for balance
-        }
+        ) { }
     }
 }
 
@@ -392,7 +580,7 @@ private fun HudTopBar(robotName: String, batteryPercent: Int, isLinked: Boolean)
 private fun StatusGroup(
     items: List<Triple<String, Color, Boolean>>,
     modifier: Modifier = Modifier,
-    alignEnd: Boolean = false,
+    alignEnd: Boolean = false
 ) {
     Column(
         modifier = modifier,
@@ -449,11 +637,7 @@ private fun PulsingDot(color: Color, animate: Boolean) {
         ),
         label = "dotScale"
     )
-
-    Box(
-        modifier = Modifier.size(12.dp),
-        contentAlignment = Alignment.Center
-    ) {
+    Box(modifier = Modifier.size(12.dp), contentAlignment = Alignment.Center) {
         Box(
             modifier = Modifier
                 .size(7.dp)
@@ -473,7 +657,7 @@ private fun ModeButton(
     selected: Boolean,
     modifier: Modifier = Modifier,
     icon: @Composable BoxScope.() -> Unit,
-    onClick: () -> Unit,
+    onClick: () -> Unit
 ) {
     Surface(
         onClick = onClick,
@@ -491,18 +675,12 @@ private fun ModeButton(
                 )
                 .padding(horizontal = 4.dp, vertical = 4.dp),
             contentAlignment = Alignment.Center
-        ) {
-            icon()
-        }
+        ) { icon() }
     }
 }
 
 @Composable
-private fun TextModeButton(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
+private fun TextModeButton(label: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         modifier = Modifier
@@ -549,7 +727,6 @@ fun HudJoystick(
 ) {
     var dragOffset by remember { mutableStateOf(Offset(value.first, value.second)) }
     val haptic = LocalHapticFeedback.current
-
     Box(
         modifier = modifier
             .aspectRatio(1f)
@@ -560,15 +737,12 @@ fun HudJoystick(
                         val radius = min(size.width, size.height) * 0.45f
                         val delta = start - center
                         val dist = sqrt(delta.x * delta.x + delta.y * delta.y)
-
                         if (hapticsEnabled && dist >= radius) {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         }
-
                         val clamped = if (dist > radius && dist != 0f) delta * (radius / dist) else delta
-                        val normalized = Offset(clamped.x / radius, clamped.y / radius)
-                        dragOffset = normalized
-                        onValueChanged(normalized.x, -normalized.y)
+                        dragOffset = Offset(clamped.x / radius, clamped.y / radius)
+                        onValueChanged(dragOffset.x, -dragOffset.y)
                     },
                     onDrag = { change, _ ->
                         change.consume()
@@ -576,15 +750,12 @@ fun HudJoystick(
                         val radius = min(size.width, size.height) * 0.45f
                         val delta = change.position - center
                         val dist = sqrt(delta.x * delta.x + delta.y * delta.y)
-
                         if (hapticsEnabled && dist >= radius) {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         }
-
                         val clamped = if (dist > radius && dist != 0f) delta * (radius / dist) else delta
-                        val normalized = Offset(clamped.x / radius, clamped.y / radius)
-                        dragOffset = normalized
-                        onValueChanged(normalized.x, -normalized.y)
+                        dragOffset = Offset(clamped.x / radius, clamped.y / radius)
+                        onValueChanged(dragOffset.x, -dragOffset.y)
                     },
                     onDragEnd = {
                         dragOffset = Offset.Zero
@@ -599,22 +770,10 @@ fun HudJoystick(
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val c = Offset(size.width / 2f, size.height / 2f)
-            val outerR = size.width * 0.45f
-            val innerR = outerR * 0.35f
-
-            drawCircle(
-                color = HudBlueD.copy(alpha = 0.9f),
-                radius = outerR,
-                center = c,
-                style = Stroke(width = 3.dp.toPx())
-            )
-
-            drawCircle(
-                color = Black.copy(alpha = 0.5f),
-                radius = outerR,
-                center = c
-            )
-
+            val outerR = size.width * 0.38f
+            val innerR = outerR * 0.28f
+            drawCircle(color = HudBlueD.copy(alpha = 0.9f), radius = outerR, center = c, style = Stroke(width = 3.dp.toPx()))
+            drawCircle(color = Black.copy(alpha = 0.5f), radius = outerR, center = c)
             rotate(45f, c) {
                 drawLine(
                     color = HudBlueD.copy(alpha = 0.9f),
@@ -629,43 +788,19 @@ fun HudJoystick(
                     strokeWidth = 2.dp.toPx()
                 )
             }
-
-            drawCircle(
-                color = Color(0xFF0B141D),
-                radius = innerR,
-                center = c
-            )
-            drawCircle(
-                color = HudBlueD.copy(alpha = 0.8f),
-                radius = innerR,
-                center = c,
-                style = Stroke(width = 2.dp.toPx())
-            )
-
-            val knobCenter = Offset(
-                c.x + dragOffset.x * (outerR * 0.8f),
-                c.y + dragOffset.y * (outerR * 0.8f)
-            )
-            drawCircle(
-                color = HudBlueD.copy(alpha = 0.9f),
-                radius = 15.dp.toPx(),
-                center = knobCenter
-            )
-            drawCircle(
-                color = HudBlueD.copy(alpha = 0.3f),
-                radius = 10.dp.toPx(),
-                center = knobCenter,
-                style = Stroke(width = 30.dp.toPx())
-            )
+            drawCircle(color = Color(0xFF0B141D), radius = innerR, center = c)
+            drawCircle(color = HudBlueD.copy(alpha = 0.8f), radius = innerR, center = c, style = Stroke(width = 2.dp.toPx()))
+            val knobCenter = Offset(c.x + dragOffset.x * (outerR * 0.8f), c.y + dragOffset.y * (outerR * 0.8f))
+            drawCircle(color = HudBlueD.copy(alpha = 0.9f), radius = 10.dp.toPx(), center = knobCenter)
+            drawCircle(color = HudBlueD.copy(alpha = 0.3f), radius = 5.dp.toPx(), center = knobCenter, style = Stroke(width = 30.dp.toPx()))
         }
-
         Icon(
             imageVector = Icons.Default.KeyboardArrowUp,
             contentDescription = null,
             tint = HudText,
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 18.dp)
+                .padding(top = 30.dp)
                 .size(20.dp)
         )
         Icon(
@@ -674,7 +809,7 @@ fun HudJoystick(
             tint = HudText,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 18.dp)
+                .padding(bottom = 30.dp)
                 .size(20.dp)
         )
         Icon(
@@ -683,7 +818,7 @@ fun HudJoystick(
             tint = HudText,
             modifier = Modifier
                 .align(Alignment.CenterStart)
-                .padding(start = 18.dp)
+                .padding(start = 30.dp)
                 .size(20.dp)
         )
         Icon(
@@ -692,7 +827,7 @@ fun HudJoystick(
             tint = HudText,
             modifier = Modifier
                 .align(Alignment.CenterEnd)
-                .padding(end = 18.dp)
+                .padding(end = 30.dp)
                 .size(20.dp)
         )
     }
@@ -708,7 +843,10 @@ fun JaxHudScreenPreviewOffline() {
         batteryPercent = 0,
         cpuTemp = 0,
         videoActive = false,
-        modes = listOf(RobotMode("STAND", "stand"), RobotMode("WALK", "walk"))
+        modes = listOf(
+            RobotMode("STAND", "stand"),
+            RobotMode("WALK", "walk")
+        )
     )
 }
 
@@ -725,7 +863,12 @@ fun JaxHudScreenPreviewOnline() {
         cpuTemp = 42,
         videoActive = true,
         videoFeed = {
-            Box(Modifier.fillMaxSize().background(Color.DarkGray), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.DarkGray),
+                contentAlignment = Alignment.Center
+            ) {
                 Text("CAMERA FEED ACTIVE", color = Color.White, fontSize = 12.sp)
             }
         }

@@ -34,6 +34,11 @@ class RobotManager(context: Context) {
                     )
                 }
                 put("modes", modesArray)
+
+                // SAVE INDICATORS
+                val indicatorsArray = JSONArray()
+                robot.enabledIndicators.forEach { indicatorsArray.put(it) }
+                put("enabledIndicators", indicatorsArray)
             }
 
             array.put(obj)
@@ -44,20 +49,21 @@ class RobotManager(context: Context) {
 
     fun loadRobots(): List<RobotConfig> {
         val jsonString = prefs.getString("saved_robots", null)
-
-        // If nothing is saved, we return an empty list
-        // (AppNavigation will handle injecting the ROSbot sample)
-        if (jsonString.isNullOrBlank()) {
-            return emptyList()
-        }
+        if (jsonString.isNullOrBlank()) return emptyList()
 
         val robots = mutableListOf<RobotConfig>()
-
         try {
             val array = JSONArray(jsonString)
-
             for (i in 0 until array.length()) {
                 val obj = array.getJSONObject(i)
+
+                // Load indicators, or default to all if missing
+                val indicatorsJson = obj.optJSONArray("enabledIndicators")
+                val indicatorsList = if (indicatorsJson != null) {
+                    List(indicatorsJson.length()) { indicatorsJson.getString(it) }
+                } else {
+                    com.example.jaxgamepad.ui.HudIndicator.entries.map { it.name }
+                }
 
                 robots.add(
                     RobotConfig(
@@ -71,24 +77,17 @@ class RobotManager(context: Context) {
                         imuTopic = obj.optJSONObject("imuTopic")?.toTopicBinding(),
                         odomTopic = obj.optJSONObject("odomTopic")?.toTopicBinding(),
                         jointStateTopic = obj.optJSONObject("jointStateTopic")?.toTopicBinding(),
-                        modes = obj.optJSONArray("modes")?.toRobotModes() ?: emptyList()
+                        modes = obj.optJSONArray("modes")?.toRobotModes() ?: emptyList(),
+                        enabledIndicators = indicatorsList
                     )
                 )
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-
+        } catch (e: Exception) { e.printStackTrace() }
         return robots
     }
 
-    // Call this if you want to force-delete everything from storage
-    fun clearAll() {
-        prefs.edit().clear().apply()
-    }
+    fun clearAll() { prefs.edit().clear().apply() }
 }
-
-// --- Helper Extensions (Keep these as they are) ---
 
 private fun TopicBinding.toJson(): JSONObject {
     return JSONObject().apply {
@@ -98,10 +97,7 @@ private fun TopicBinding.toJson(): JSONObject {
 }
 
 private fun JSONObject.toTopicBinding(): TopicBinding {
-    return TopicBinding(
-        name = optString("name", ""),
-        type = optString("type", "")
-    )
+    return TopicBinding(name = optString("name", ""), type = optString("type", ""))
 }
 
 private fun JSONArray.toRobotModes(): List<RobotMode> {
