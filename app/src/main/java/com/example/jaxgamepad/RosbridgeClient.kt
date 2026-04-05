@@ -331,13 +331,13 @@ class RosbridgeClient {
         }
 
         val cmdVelTopic =
-            findByNameHintAndType("cmd_vel", "geometry_msgs/Twist")
-                ?: findByExactType("geometry_msgs/Twist")
+            findByNameHintAndType("cmd_vel", "geometry_msgs/msg/Twist")
+                ?: findByExactType("geometry_msgs/msg/Twist")
 
         val modeTopic =
-            findByNameHintAndType("mode", "std_msgs/String")
+            findByNameHintAndType("mode", "std_msgs/msg/String")
                 ?: allTopics.firstOrNull {
-                    it.type == "std_msgs/String" &&
+                    it.type == "std_msgs/msg/String" &&
                             (
                                     it.name.contains("mode", ignoreCase = true) ||
                                             it.name.contains("state", ignoreCase = true)
@@ -345,26 +345,26 @@ class RosbridgeClient {
                 }?.toBinding()
 
         val batteryTopic =
-            findByExactType("sensor_msgs/BatteryState")
+            findByExactType("sensor_msgs/msg/BatteryState")
                 ?: allTopics.firstOrNull {
                     it.name.contains("battery", ignoreCase = true) ||
                             it.name.contains("power", ignoreCase = true)
                 }?.toBinding()
 
         val imuTopic =
-            findByExactType("sensor_msgs/Imu")
+            findByExactType("sensor_msgs/msg/Imu")
                 ?: allTopics.firstOrNull {
                     it.name.contains("imu", ignoreCase = true)
                 }?.toBinding()
 
         val odomTopic =
-            findByExactType("nav_msgs/Odometry")
+            findByExactType("nav_msgs/msg/Odometry")
                 ?: allTopics.firstOrNull {
                     it.name.contains("odom", ignoreCase = true)
                 }?.toBinding()
 
         val jointStateTopic =
-            findByExactType("sensor_msgs/JointState")
+            findByExactType("sensor_msgs/msg/JointState")
                 ?: allTopics.firstOrNull {
                     it.name.contains("joint_states", ignoreCase = true)
                 }?.toBinding()

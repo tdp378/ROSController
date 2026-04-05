@@ -1108,10 +1108,16 @@ fun RobotSetupScreen(
                                                 ros.discoverTopics { res ->
                                                     discovering = false
                                                     res.onSuccess { disc ->
-                                                        allDiscoveredTopics = disc.allTopics
-                                                        cmdVelTopic = disc.cmdVelTopic
-                                                        modeTopic = disc.modeTopic
-                                                        batteryTopic = disc.batteryTopic
+                                                        res.onSuccess { disc ->
+                                                            allDiscoveredTopics = disc.allTopics
+                                                            cmdVelTopic = disc.cmdVelTopic
+                                                            modeTopic = disc.modeTopic
+                                                            batteryTopic = disc.batteryTopic
+                                                            imuTopic = disc.imuTopic
+                                                            odomTopic = disc.odomTopic
+                                                            jointStateTopic = disc.jointStateTopic
+                                                            discoverStatus = "SYNC COMPLETE"
+                                                        }
                                                         discoverStatus = "SYNC COMPLETE"
                                                     }.onFailure {
                                                         discoverStatus = "SYNC FAILED"
@@ -1126,14 +1132,14 @@ fun RobotSetupScreen(
                             TopicBindingDropdown(
                                 title = "CMD VEL",
                                 selected = cmdVelTopic,
-                                options = buildTopicOptions(allDiscoveredTopics, listOf("geometry_msgs/Twist")),
+                                options = buildTopicOptions(allDiscoveredTopics, listOf("geometry_msgs/msg/Twist")),
                                 placeholder = "Select Topic...",
                                 onSelected = { cmdVelTopic = it }
                             )
                             TopicBindingDropdown(
                                 title = "MODE TOPIC",
                                 selected = modeTopic,
-                                options = buildTopicOptions(allDiscoveredTopics, listOf("std_msgs/String")),
+                                options = buildTopicOptions(allDiscoveredTopics, listOf("std_msgs/msg/String")),
                                 placeholder = "Select Topic...",
                                 onSelected = { modeTopic = it }
                             )
@@ -1142,7 +1148,7 @@ fun RobotSetupScreen(
                                 selected = batteryTopic,
                                 options = buildTopicOptions(
                                     allDiscoveredTopics,
-                                    listOf("sensor_msgs/BatteryState")
+                                    listOf("sensor_msgs/msg/BatteryState")
                                 ),
                                 placeholder = "Select Topic...",
                                 onSelected = { batteryTopic = it }
@@ -1150,21 +1156,21 @@ fun RobotSetupScreen(
                             TopicBindingDropdown(
                                 title = "IMU",
                                 selected = imuTopic,
-                                options = buildTopicOptions(allDiscoveredTopics, listOf("sensor_msgs/Imu")),
+                                options = buildTopicOptions(allDiscoveredTopics, listOf("sensor_msgs/msg/Imu")),
                                 placeholder = "Select Topic...",
                                 onSelected = { imuTopic = it }
                             )
                             TopicBindingDropdown(
                                 title = "ODOM",
                                 selected = odomTopic,
-                                options = buildTopicOptions(allDiscoveredTopics, listOf("nav_msgs/Odometry")),
+                                options = buildTopicOptions(allDiscoveredTopics, listOf("nav_msgs/msg/Odometry")),
                                 placeholder = "Select Topic...",
                                 onSelected = { odomTopic = it }
                             )
                             TopicBindingDropdown(
                                 title = "JOINT STATES",
                                 selected = jointStateTopic,
-                                options = buildTopicOptions(allDiscoveredTopics, listOf("sensor_msgs/JointState")),
+                                options = buildTopicOptions(allDiscoveredTopics, listOf("sensor_msgs/msg/JointState")),
                                 placeholder = "Select Topic...",
                                 onSelected = { jointStateTopic = it }
                             )
@@ -1598,10 +1604,56 @@ private fun saveImageToInternalStorage(context: Context, uri: Uri): String? {
         null
     }
 }
+// --- Helper / Utility functions ---
 
-fun buildTopicOptions(allTopics: List<RosTopicInfo>, preferredTypes: List<String>): List<TopicBinding> {
-    return allTopics.filter { it.type in preferredTypes }.map { TopicBinding(it.name, it.type) }
+data class TopicDropdownItem(
+    val binding: TopicBinding? = null,
+    val label: String? = null,
+    val isHeader: Boolean = false
+)
+
+fun buildTopicOptions(
+    allTopics: List<RosTopicInfo>,
+    preferredTypes: List<String>
+): List<TopicDropdownItem> {
+    val preferred = allTopics
+        .filter { it.type in preferredTypes }
+        .sortedBy { it.name.lowercase() }
+        .map { TopicDropdownItem(binding = TopicBinding(it.name, it.type)) }
+
+    val others = allTopics
+        .filter { it.type !in preferredTypes }
+        .sortedBy { it.name.lowercase() }
+        .map {
+            TopicDropdownItem(
+                binding = TopicBinding(
+                    it.name,
+                    if (it.type.isBlank()) "unknown" else it.type
+                )
+            )
+        }
+
+    val result = mutableListOf<TopicDropdownItem>()
+
+    if (preferred.isNotEmpty()) {
+        result += TopicDropdownItem(label = "Recommended", isHeader = true)
+        result += preferred
+    }
+
+    if (others.isNotEmpty()) {
+        result += TopicDropdownItem(label = "All discovered topics", isHeader = true)
+        result += others
+    }
+
+    return result.distinctBy {
+        if (it.isHeader) {
+            "header:${it.label}"
+        } else {
+            "${it.binding?.name}|${it.binding?.type}"
+        }
+    }
 }
+
 
 @Composable
 fun HudTextField(value: String, onValueChange: (String) -> Unit, label: String) {
@@ -1663,11 +1715,12 @@ fun MainMenuPanel(content: @Composable ColumnScope.() -> Unit) {
 fun TopicBindingDropdown(
     title: String,
     selected: TopicBinding?,
-    options: List<TopicBinding>,
+    options: List<TopicDropdownItem>,
     placeholder: String,
     onSelected: (TopicBinding?) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+
     ExposedDropdownMenuBox(
         expanded = expanded,
         onExpandedChange = { expanded = !expanded }
@@ -1699,6 +1752,7 @@ fun TopicBindingDropdown(
             ),
             shape = RoundedCornerShape(8.dp)
         )
+
         ExposedDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
@@ -1716,33 +1770,49 @@ fun TopicBindingDropdown(
                 },
                 colors = MenuDefaults.itemColors(textColor = HudText)
             )
-            options.forEach { option ->
-                DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text(
-                                text = option.name,
-                                color = HudText,
-                                fontSize = 14.sp
-                            )
-                            Text(
-                                text = option.type,
-                                color = HudBlue.copy(alpha = 0.8f),
-                                fontSize = 10.sp
-                            )
-                        }
-                    },
-                    onClick = {
-                        onSelected(option)
-                        expanded = false
-                    },
-                    colors = MenuDefaults.itemColors(textColor = HudText)
-                )
+
+            options.forEach { item ->
+                if (item.isHeader) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        color = HudBlue.copy(alpha = 0.25f)
+                    )
+                    Text(
+                        text = item.label ?: "",
+                        color = HudBlue,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                    )
+                } else {
+                    val option = item.binding ?: return@forEach
+
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text(
+                                    text = option.name,
+                                    color = HudText,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    text = option.type,
+                                    color = HudBlue.copy(alpha = 0.8f),
+                                    fontSize = 10.sp
+                                )
+                            }
+                        },
+                        onClick = {
+                            onSelected(option)
+                            expanded = false
+                        },
+                        colors = MenuDefaults.itemColors(textColor = HudText)
+                    )
+                }
             }
         }
     }
 }
-
 @Composable
 fun ModeEditorRow(
     mode: RobotMode,
