@@ -250,7 +250,7 @@ class RosbridgeClient {
             topicsResult
                 .onFailure { onResult(Result.failure(it)) }
                 .onSuccess { topicNamesResponse ->
-                    callService("/rosapi/topic_types") { typesResult ->
+                    callService("/rosapi/topics_and_raw_types") { typesResult ->
                         typesResult
                             .onFailure { onResult(Result.failure(it)) }
                             .onSuccess { topicTypesResponse ->
@@ -292,9 +292,18 @@ class RosbridgeClient {
 
         for (i in 0 until count) {
             val name = topicTypesArray.optString(i)
-            val type = typesArray.optString(i)
-            if (name.isNotBlank() && type.isNotBlank()) {
-                typeMap[name] = type
+            val rawTypeEntry = typesArray.opt(i)
+
+            val resolvedType = when (rawTypeEntry) {
+                is JSONArray -> {
+                    if (rawTypeEntry.length() > 0) rawTypeEntry.optString(0) else ""
+                }
+                is String -> rawTypeEntry
+                else -> ""
+            }
+
+            if (name.isNotBlank() && resolvedType.isNotBlank()) {
+                typeMap[name] = resolvedType
             }
         }
 
