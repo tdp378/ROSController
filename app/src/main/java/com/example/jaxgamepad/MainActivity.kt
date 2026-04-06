@@ -935,26 +935,7 @@ fun RobotSetupScreen(
 
     val hasNoUserRobots =
         savedRobots.size <= 1 && savedRobots.any { it.name.contains("Demo", ignoreCase = true) }
-    var showWelcomeDialog by remember(savedRobots) {
-        mutableStateOf(hasNoUserRobots)
-    }
 
-    CyberDialog(
-        show = showWelcomeDialog && editingRobot == null && !isAdding,
-        title = "SYSTEM NOTIFICATION",
-        confirmText = "ADD NEW ▶",
-        onConfirm = {
-            showWelcomeDialog = false
-            showRosRequirements = true
-        },
-        onDismiss = { showWelcomeDialog = false }
-    ) {
-        Text(
-            text = "We have provided you with a sample robot (ROSbot) to test the UI. Configure your own robot to realize the full functionality of the controller.",
-            color = HudText,
-            fontSize = 14.sp
-        )
-    }
 
 
     CyberDialog(
@@ -1128,6 +1109,47 @@ fun RobotSetupScreen(
                             onDelete = { robotToDelete = robot }
                         )
 
+                    }
+                    if (hasNoUserRobots) {
+                        item {
+                            Surface(
+                                color = HudBlue.copy(alpha = 0.05f),
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, HudBlue.copy(alpha = 0.2f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Info,
+                                        contentDescription = null,
+                                        tint = HudBlue,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text(
+                                            text = "SYSTEM NOTIFICATION",
+                                            color = HudBlue,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 1.sp
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "We have provided a sample robot (ROSbot) to test the UI. Configure your own hardware profile to enable real-time telemetry and motion control.",
+                                            color = HudText.copy(alpha = 0.8f),
+                                            fontSize = 12.sp,
+                                            lineHeight = 16.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
 
 
