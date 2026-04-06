@@ -13,6 +13,8 @@ Control your robot with dual joysticks, height / speed adjustment, and customiza
 - Speed slider
 - Fully customizable mode buttons
 - Auto-discovery of ROS topics
+- Real-time telemetry display (link, motors, IMU, battery, CPU)
+- Multi-robot support (save and switch between robots)
 - Works over rosbridge (WebSocket)
 - Robot-agnostic design (no code changes required)
 
@@ -41,15 +43,29 @@ Your robot must provide:
 2. Connect the app to your robot:
    ws://<robot-ip>:9090
 
-3. Tap Auto Discover Topics
-   - The app will attemt to discover all topics and provide recommendation
-   - Use the dropdown under each topic
+3. Tap **Auto Discover Topics**
+   - The app scans available ROS topics
+   - Suggested matches will be pre-filled when possible
+   - Use dropdowns to select the correct topics
 
-5. Select (Minimum):
+4. Select (minimum):
    - Motion Topic (Twist)
    - Mode Topic (String)
 
-6. Configure your mode buttons
+5. Configure your mode buttons
+
+---
+
+## 🤖 Multiple Robots
+
+You can save and manage multiple robots.
+
+Each robot stores:
+- ROS connection address
+- Selected topics
+- Mode configurations
+
+Switch between robots instantly without reconfiguration.
 
 ---
 
@@ -57,19 +73,19 @@ Your robot must provide:
 
 - Left Joystick → Forward / Strafe  
 - Right Joystick → Turn or Body Control (mode dependent)  
-- Vertical Slider Left → Height / posture
-- Vertical Slider Right → Speed
+- Vertical Slider (Left) → Height / posture  
+- Vertical Slider (Right) → Speed  
 - Mode Buttons → Switch behaviors  
 
 ---
 
 ## 🔘 Modes
 
-The app intially inserts 6 standard modes but they are fully customizable.
+The app initially provides 6 standard modes, but they are fully customizable.
 
-Each button has:
-- Label → Displayed in the UI  
-- Command → Sent to the robot  
+Each button includes:
+- **Label** → Displayed in the UI  
+- **Command** → Sent to the robot  
 
 Example:
 
@@ -98,7 +114,21 @@ Mode:
 - /behavior_mode
 - /dingo_mode
 
-Use the built-in Scan feature to select the correct ones.
+Use the built-in Auto Discover feature to select the correct ones.
+
+---
+
+## 📊 Telemetry
+
+If available, the app can display real-time robot status:
+
+- Link status (connection)
+- Motor state
+- IMU status
+- Battery level
+- CPU temperature
+
+Telemetry topics are automatically detected when possible, but may require manual selection depending on your robot.
 
 ---
 
@@ -113,6 +143,18 @@ Motion:
 Mode:
 - /robot_mode → std_msgs/String  
   Used to trigger behaviors like walk, sit, or rest
+
+---
+
+## 🔧 Custom Topics (Advanced)
+
+The app is designed to be flexible and extensible.
+
+In addition to standard motion and mode topics, you can map additional topics for telemetry or future features.
+
+This allows support for robots with unique interfaces without modifying the app.
+
+(Custom topic configuration will continue to expand in future updates.)
 
 ---
 
@@ -185,7 +227,3 @@ App → high-level commands
 Robot → low-level control  
 
 This allows the same app to work across many different robots.
-
----
-
-
