@@ -98,7 +98,7 @@ fun getNetworkDetails(context: Context): Pair<String, String> {
     val status = if (ipAddress.startsWith("192.")) {
         "WIFI_CONNECTED"
     } else {
-        "WIFI NOT CONNECTED"
+        "WIFI_NOT_CONNECTED"
     }
 
     return status to ipAddress
@@ -337,20 +337,39 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
 
     LaunchedEffect(Unit) {
         if (!hasBooted) {
-            val script = "> BOOTING ROS CONTROLLER..." +
-                    "\n|> " +
-                    "\n|> LINK: ${networkInfo.first}" +
-                    "\n|> ADDR: ${networkInfo.second}" +
-                    "\n|> " +
-                    "\n|> STATUS: SYSTEM_READY_"
-            val chunks = script.split("|")
+            val (status, addr) = networkInfo
+            val isConnected = status == "WIFI_CONNECTED"
 
+            val script = if (isConnected) {
+                // Standard success boot
+                "> BOOTING_ROS_CONTROLLER" +
+                        "\n|>" +
+                        "\n|>" +
+                        "\n|> LINK: $status" +
+                        "\n|> IP: $addr" +
+                        "\n|>" +
+                        "\n|>" +
+                        "\n|> STATUS: SYSTEM_READY_"
+            } else {
+                // Failure boot sequence
+                "> BOOTING_ROS_CONTROLLER" +
+                        "\n|>" +
+                        "\n|>" +
+                        "\n|> LINK: $status" +
+                        "\n|> IP: UNKNOWN" +
+                        "\n|>" +
+                        "\n|> ERROR: NO_LOCAL_IP_FOUND" +
+                        "\n|>" +
+                        "\n|> STATUS: SYSTEM_OFFLINE"
+            }
+
+            val chunks = script.split("|")
             chunks.forEachIndexed { index, chunk ->
                 chunk.forEach { char ->
                     terminalText += char
                     delay(30)
                 }
-                if (index < chunks.size - 1) delay(1500)
+                if (index < chunks.size - 1) delay(300)
             }
             hasBooted = true
         }
@@ -358,11 +377,30 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
 
     LaunchedEffect(networkInfo) {
         if (hasBooted) {
-            terminalText = "> BOOTING ROS CONTROLLER..." +
-                    "\n> " +
-                    "\n> LINK: ${networkInfo.first}" +
-                    "\n> ADDR: ${networkInfo.second}" +
-                    "\n> STATUS: SYSTEM_READY_"
+            val (status, addr) = networkInfo
+            val isConnected = status == "WIFI_CONNECTED"
+
+            terminalText = if (isConnected) {
+                "> BOOTING_ROS_CONTROLLER" +
+                        "\n|>" +
+                        "\n|>" +
+                        "\n|> LINK: $status" +
+                        "\n|> IP: $addr" +
+                        "\n|>" +
+                        "\n|>" +
+                        "\n|> STATUS: SYSTEM_READY_"
+            } else {
+                // Failure boot sequence
+                "> BOOTING_ROS_CONTROLLER" +
+                        "\n|>" +
+                        "\n|>" +
+                        "\n|> LINK: $status" +
+                        "\n|> IP: UNKNOWN" +
+                        "\n|>" +
+                        "\n|> ERROR: NO_LOCAL_IP_FOUND" +
+                        "\n|>" +
+                        "\n|> STATUS: SYSTEM_OFFLINE"
+            }
         }
     }
 
@@ -2458,6 +2496,41 @@ fun EditModeDialogPreview() {
             initialMode = RobotMode("WALK", "walk"),
             onDismiss = {},
             onSave = {}
+        )
+    }
+}
+
+@Preview(
+    name = "Main Menu - Terminal Booted",
+    showBackground = true,
+    device = "spec:width=411dp,height=891dp,orientation=portrait"
+)
+@Composable
+fun StartMenuScreenPreview() {
+    // Mocking the terminal text that usually generates in LaunchedEffect
+    val mockTerminalText = """> BOOTING_ROS_CONTROLLER...
+|> 
+|> LINK: WIFI_CONNECTED
+|> ADDR: 192.168.1.15
+|> 
+|> STATUS: SYSTEM_READY_"""
+
+    val sampleRobots = listOf(
+        RobotConfig(
+            name = "Jax-1",
+            rosAddress = "192.168.1.15",
+            videoUrl = "http://192.168.1.15:8080/stream",
+            thumbnailPath = "demo_thumb"
+        )
+    )
+
+    JaxGamepadTheme {
+        StartMenuScreen(
+            ros = RosbridgeClient(),
+            savedRobots = sampleRobots,
+            terminalText = mockTerminalText,
+            onLaunchGamepad = {},
+            onLaunchSetup = {}
         )
     }
 }
