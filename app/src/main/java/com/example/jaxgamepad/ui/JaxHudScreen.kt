@@ -73,6 +73,7 @@ fun JaxHudScreen(
     cameraActive: Boolean = false,
     leftJoystickValue: Pair<Float, Float> = 0f to 0f,
     rightJoystickValue: Pair<Float, Float> = 0f to 0f,
+    heightSliderValue: Float = 0f,
     selectedMode: String = "walk",
     modes: List<RobotMode> = listOf(
         RobotMode("STAND", "stand"),
@@ -86,11 +87,13 @@ fun JaxHudScreen(
     onVideoToggle: (Boolean) -> Unit = {},
     onLeftJoystickChanged: (x: Float, y: Float) -> Unit = { _, _ -> },
     onRightJoystickChanged: (x: Float, y: Float) -> Unit = { _, _ -> },
+    onHeightSliderChanged: (Float) -> Unit = {},
     onModeSelected: (String) -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onTerminateClick: () -> Unit = {},
     videoFeed: @Composable () -> Unit = { CameraPlaceholder(modifier = Modifier.fillMaxSize()) }
-) {
+)
+ {
     var mode by remember(selectedMode, modes) {
         mutableStateOf(
             modes.firstOrNull { it.command.equals(selectedMode, ignoreCase = true) }
@@ -99,8 +102,8 @@ fun JaxHudScreen(
         )
     }
 
-    var heightSliderValue by remember { mutableStateOf(0.5f) }
-    var speedSliderValue by remember { mutableStateOf(0.5f) }
+
+    var speedSliderValue by remember { mutableStateOf(0.0f) }
 
     val activeLedList = remember(enabledIndicators, isLinked, motorsActive, imuActive, cameraActive) {
         mutableListOf<Triple<String, Color, Boolean>>().apply {
@@ -173,7 +176,7 @@ fun JaxHudScreen(
 
                     HudVerticalSlider(
                         value = heightSliderValue,
-                        onValueChange = { heightSliderValue = it },
+                        onValueChange = onHeightSliderChanged,
                         label = "HGT",
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
@@ -330,7 +333,8 @@ fun HudVerticalSlider(
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
-    val clampedValue = value.coerceIn(0f, 1f)
+    val clampedValue = value.coerceIn(-1f, 1f)
+    val displayValue01 = (clampedValue + 1f) / 2f
     val haptic = LocalHapticFeedback.current
 
     Column(
@@ -356,8 +360,7 @@ fun HudVerticalSlider(
             contentAlignment = Alignment.Center
         ) {
             val density = LocalDensity.current
-            val trackHeight = maxHeight
-            val trackHeightPx = with(density) { trackHeight.toPx() }
+            val trackHeightPx = with(density) { maxHeight.toPx() }
 
             val thumbHeight = 28.dp
             val thumbWidth = 28.dp
@@ -365,12 +368,13 @@ fun HudVerticalSlider(
 
             val thumbHeightPx = with(density) { thumbHeight.toPx() }
             val usableHeightPx = (trackHeightPx - thumbHeightPx).coerceAtLeast(1f)
-            val thumbOffsetPx = (1f - clampedValue) * usableHeightPx
+            val thumbOffsetPx = (1f - displayValue01) * usableHeightPx
             val thumbOffsetDp = with(density) { thumbOffsetPx.toDp() }
 
             fun positionToValue(y: Float): Float {
-                val raw = 1f - ((y - thumbHeightPx / 2f) / usableHeightPx)
-                return raw.coerceIn(0f, 1f)
+                val raw01 = 1f - ((y - thumbHeightPx / 2f) / usableHeightPx)
+                val clamped01 = raw01.coerceIn(0f, 1f)
+                return (clamped01 * 2f) - 1f
             }
 
             Box(
@@ -393,7 +397,6 @@ fun HudVerticalSlider(
                         )
                     }
             ) {
-                // outer rail glow frame
                 Box(
                     modifier = Modifier
                         .align(Alignment.Center)
@@ -408,7 +411,6 @@ fun HudVerticalSlider(
                         )
                 )
 
-                // inactive rail
                 Box(
                     modifier = Modifier
                         .align(Alignment.Center)
@@ -418,12 +420,11 @@ fun HudVerticalSlider(
                         .background(HudBlueD.copy(alpha = 0.18f))
                 )
 
-                // active fill
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .width(railWidth)
-                        .fillMaxHeight(clampedValue)
+                        .fillMaxHeight(displayValue01)
                         .clip(RoundedCornerShape(10.dp))
                         .background(
                             Brush.verticalGradient(
@@ -436,7 +437,6 @@ fun HudVerticalSlider(
                         )
                 )
 
-                // thumb glow
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
@@ -446,7 +446,6 @@ fun HudVerticalSlider(
                         .background(HudBlueD.copy(alpha = 0.15f))
                 )
 
-                // thumb
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
@@ -467,34 +466,10 @@ fun HudVerticalSlider(
                             HudText.copy(alpha = 0.35f),
                             RoundedCornerShape(6.dp)
                         )
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .size(width = 14.dp, height = 3.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(HudText.copy(alpha = 0.95f))
-                    )
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .offset(y = (-5).dp)
-                            .size(width = 14.dp, height = 2.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(HudText.copy(alpha = 0.55f))
-                    )
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .offset(y = 5.dp)
-                            .size(width = 14.dp, height = 2.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(HudText.copy(alpha = 0.55f))
-                    )
-                }
+                )
 
                 Text(
-                    text = "${(clampedValue * 100).toInt()}",
+                    text = String.format("%.2f", clampedValue),
                     color = HudText.copy(alpha = 0.85f),
                     fontSize = 8.sp,
                     fontFamily = FontFamily.Monospace,

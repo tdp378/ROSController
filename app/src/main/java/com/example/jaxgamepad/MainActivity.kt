@@ -220,35 +220,39 @@ fun CyberDialog(
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                     ) {
                         Text(
-                            "NOT NOW",
+                            "DISMISS",
                             color = HudText.copy(alpha = 0.75f),
                             fontWeight = FontWeight.Medium
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(12.dp))
+                    // THIS IS THE KEY FIX: Only show the button if confirmText is not empty
+                    if (confirmText.isNotEmpty()) {
+                        Spacer(modifier = Modifier.width(12.dp))
 
-                    CyberButton(
-                        onClick = onConfirm,
-                        modifier = Modifier
-                            .height(35.dp)
-                            .width(130.dp)
-                    ) {
-                        Box(
+                        CyberButton(
+                            onClick = onConfirm,
                             modifier = Modifier
-                                .fillMaxSize()
-                                .border(1.dp, HudBlue, RoundedCornerShape(10.dp))
-                                .background(
-                                    HudBlue.copy(alpha = 0.10f),
-                                    RoundedCornerShape(10.dp)
-                                ),
-                            contentAlignment = Alignment.Center
+                                .height(35.dp)
+                                .width(130.dp)
                         ) {
-                            Text(
-                                text = confirmText,
-                                color = HudBlue,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .border(1.dp, HudBlue, RoundedCornerShape(10.dp))
+                                    .background(
+                                        HudBlue.copy(alpha = 0.10f),
+                                        RoundedCornerShape(10.dp)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = confirmText,
+                                    color = HudBlue,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
+                            }
                         }
                     }
                 }
@@ -256,7 +260,6 @@ fun CyberDialog(
         }
     }
 }
-
 @Composable
 fun CyberButton(
     onClick: () -> Unit,
@@ -442,7 +445,8 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
             },
             onHapticsChange = { hapticsEnabled = it },
             reHideSystemBars = reHideSystemBars,
-            onBackToMenu = { currentScreen = Screen.Menu }
+            onBackToMenu = { currentScreen = Screen.Menu },
+            networkInfo = networkInfo
         )
 
         Screen.RobotSetup -> RobotSetupScreen(
@@ -478,13 +482,18 @@ fun JaxDriverScreen(
     onRobotChange: (RobotConfig) -> Unit,
     onHapticsChange: (Boolean) -> Unit,
     reHideSystemBars: () -> Unit,
-    onBackToMenu: () -> Unit
+    onBackToMenu: () -> Unit,
+    networkInfo: Pair<String, String>
 ) {
     var moveX by remember { mutableStateOf(0.0) }
     var moveY by remember { mutableStateOf(0.0) }
     var turnZ by remember { mutableStateOf(0.0) }
+    var bodyHeightZ by remember { mutableStateOf(0.0) }   // -1.0 .. 1.0
+    var bodyRollX by remember { mutableStateOf(0.0) }     // for rest mode later
+    var bodyPitchY by remember { mutableStateOf(0.0) }    // for rest mode later
     var showSettings by remember { mutableStateOf(false) }
     var showTerminateVerify by remember { mutableStateOf(false) }
+    var reconnectNonce by remember { mutableIntStateOf(0) }
 
     ros.isConnected
     val sessionBaseUptime = remember(currentRobot.name) { currentRobot.totalUptimeSeconds }
@@ -509,7 +518,7 @@ fun JaxDriverScreen(
 
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(currentRobot.rosAddress) {
+    LaunchedEffect(currentRobot.rosAddress, reconnectNonce) {
         if (currentRobot.rosAddress.isNotBlank()) {
             ros.disconnect()
             ros.connect("ws://${currentRobot.rosAddress}") {
@@ -523,11 +532,34 @@ fun JaxDriverScreen(
         onDispose { ros.clearTelemetrySubscriptions(currentRobot) }
     }
 
-    DisposableEffect(ros.isConnected, moveX, moveY, turnZ, currentRobot) {
+    DisposableEffect(
+        ros.isConnected,
+        moveX,
+        moveY,
+        turnZ,
+        bodyHeightZ,
+        bodyRollX,
+        bodyPitchY,
+        currentRobot
+    ) {
+
+        val linearX = moveY        // flip forward/back if needed
+        val linearY = -moveX         // flip if strafing is wrong
+        val linearZ = bodyHeightZ   // or -bodyHeightZ
+        val angularZ = -turnZ        // or -turnZ
         val publishJob: Job? = if (ros.isConnected) {
             scope.launch {
                 while (true) {
-                    ros.publishCmdVel(currentRobot, moveY, moveX, turnZ)
+                    ros.publishCmdVel(
+                        robot = currentRobot,
+                        linearX = linearX,
+                        linearY = linearY,
+                        linearZ = linearZ,
+                        angularX = bodyRollX,
+                        angularY = bodyPitchY,
+                        angularZ = angularZ
+                    )
+
                     delay(75)
                 }
             }
@@ -615,13 +647,21 @@ fun JaxDriverScreen(
     }
 
     if (showTerminateVerify) {
+        // Determine the label based on connection status
+        val powerActionText = if (ros.isConnected) "" else "RECONNECT ▶"
+
         CyberDialog(
-            show = true,
-            title = "CONFIRM TERMINATION",
-            confirmText = "TERMINATE",
+            show = showTerminateVerify,
+            title = "POWER OPTIONS",
+            // If it's blank, we'll handle the button logic below
+            confirmText = powerActionText,
             onConfirm = {
-                showTerminateVerify = false
-                onBackToMenu()
+                if (!ros.isConnected) {
+                    ros.disconnect()
+                    reconnectNonce++
+                    showTerminateVerify = false
+                    reHideSystemBars()
+                }
             },
             onDismiss = {
                 showTerminateVerify = false
@@ -629,10 +669,40 @@ fun JaxDriverScreen(
             }
         ) {
             Text(
-                "Are you sure you want to terminate the current session and return to the main menu?",
+                text = if (ros.isConnected) {
+                    "ROS link is active. System is responding normally."
+                } else {
+                    "ROS link is offline. Link lost at ${networkInfo.second}."
+                },
                 color = HudText,
                 fontSize = 14.sp
             )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Red "Emergency Exit" button always visible in the content area
+            CyberButton(
+                onClick = {
+                    showTerminateVerify = false
+                    onBackToMenu()
+                },
+                modifier = Modifier.fillMaxWidth().height(42.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .border(1.dp, Color.Red.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+                        .background(Color.Red.copy(alpha = 0.05f), RoundedCornerShape(10.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "TERMINATE SESSION & EXIT",
+                        color = Color.Red.copy(alpha = 0.9f),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp
+                    )
+                }
+            }
         }
     }
 
@@ -645,8 +715,10 @@ fun JaxDriverScreen(
         enabledIndicators = activeIndicators,
         leftJoystickValue = moveX.toFloat() to moveY.toFloat(),
         rightJoystickValue = turnZ.toFloat() to 0f,
+        heightSliderValue = bodyHeightZ.toFloat(),
         videoActive = videoButtonActive,
         hapticsEnabled = hapticsEnabled,
+        isLinked = ros.isConnected,
         onVideoToggle = { enabled ->
             videoButtonActive = enabled
             videoLoadedManually = enabled
@@ -658,6 +730,9 @@ fun JaxDriverScreen(
         },
         onRightJoystickChanged = { x, _ ->
             turnZ = x.toDouble()
+        },
+        onHeightSliderChanged = { z ->
+            bodyHeightZ = z.toDouble()
         },
         onModeSelected = { mode -> ros.publishMode(currentRobot, mode) },
         onSettingsClick = { showSettings = true },
@@ -698,6 +773,7 @@ fun RobotSetupScreen(
     var editingRobot by remember(initialEditingRobot) { mutableStateOf(initialEditingRobot) }
     var isAdding by remember(initialIsAdding) { mutableStateOf(initialIsAdding) }
     var robotToDelete by remember { mutableStateOf<RobotConfig?>(null) }
+    var modeToDeleteIndex by remember { mutableStateOf<Int?>(null) }
     var showRosRequirements by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -727,6 +803,7 @@ fun RobotSetupScreen(
         )
     }
 
+
     CyberDialog(
         show = showRosRequirements,
         title = "MINIMUM REQUIREMENTS",
@@ -754,39 +831,34 @@ fun RobotSetupScreen(
     }
 
     if (robotToDelete != null) {
-        AlertDialog(
-            onDismissRequest = { robotToDelete = null },
-            title = {
+        CyberDialog(
+            show = true,
+            title = "AUTHORIZE DELETION",
+            confirmText = "DELETE ▶",
+            onConfirm = {
+                robotToDelete?.let { onDelete(it) }
+                robotToDelete = null
+            },
+            onDismiss = { robotToDelete = null }
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    text = "DELETE ROBOT",
-                    color = HudBlue,
-                    fontWeight = FontWeight.Bold
+                    text = "Are you sure you want to purge the configuration for '${robotToDelete?.name}' from the local database?",
+                    color = HudText,
+                    fontSize = 14.sp
                 )
-            },
-            text = {
+
                 Text(
-                    text = "Are you sure you want to delete '${robotToDelete?.name}'?",
-                    color = HudText
+                    text = "WARNING: THIS ACTION CANNOT BE UNDONE.",
+                    color = Color.Red.copy(alpha = 0.8f),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 10.sp,
+                    letterSpacing = 1.sp
                 )
-            },
-            containerColor = HudBackground,
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        robotToDelete?.let { onDelete(it) }
-                        robotToDelete = null
-                    }
-                ) {
-                    Text("DELETE", color = Color.Red, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { robotToDelete = null }) {
-                    Text("CANCEL", color = HudText.copy(alpha = 0.6f))
-                }
             }
-        )
+        }
     }
+
 
     Box(
         modifier = Modifier
@@ -946,6 +1018,36 @@ fun RobotSetupScreen(
                         modeToEditIndex = null
                     }
                 )
+            }
+
+            if (modeToDeleteIndex != null) {
+                val modeName = modes.getOrNull(modeToDeleteIndex!!)?.label ?: "Unknown Mode"
+
+                CyberDialog(
+                    show = true,
+                    title = "AUTHORIZE DELETION",
+                    confirmText = "DELETE ▶",
+                    onConfirm = {
+                        modeToDeleteIndex?.let { modes.removeAt(it) }
+                        modeToDeleteIndex = null
+                    },
+                    onDismiss = { modeToDeleteIndex = null }
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            text = "Are you sure you want to remove the '$modeName' command from the controller interface?",
+                            color = HudText,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            text = "WARNING: THIS WILL REMOVE THE BUTTON FROM THE HUD AND WILL NEED TO BE RECREATED IF NEEDED.",
+                            color = Color.Red.copy(alpha = 0.8f),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp,
+                            letterSpacing = 1.sp
+                        )
+                    }
+                }
             }
 
             Column(
@@ -1212,7 +1314,7 @@ fun RobotSetupScreen(
                                         modeToEditIndex = index
                                         showModeDialog = true
                                     },
-                                    onDelete = { modes.removeAt(index) }
+                                    onDelete = { modeToDeleteIndex = index }
                                 )
                             }
                         }

@@ -121,6 +121,9 @@ class RosbridgeClient {
         robot: RobotConfig,
         linearX: Double,
         linearY: Double,
+        linearZ: Double,
+        angularX: Double,
+        angularY: Double,
         angularZ: Double
     ) {
         val binding = robot.cmdVelTopic ?: return
@@ -137,14 +140,14 @@ class RosbridgeClient {
                         JSONObject().apply {
                             put("x", linearX)
                             put("y", linearY)
-                            put("z", 0.0)
+                            put("z", linearZ)
                         }
                     )
                     put(
                         "angular",
                         JSONObject().apply {
-                            put("x", 0.0)
-                            put("y", 0.0)
+                            put("x", angularX)
+                            put("y", angularY)
                             put("z", angularZ)
                         }
                     )
