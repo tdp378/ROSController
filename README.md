@@ -10,6 +10,7 @@ Control your robot with dual joysticks, height / speed adjustment, and customiza
 
 - Dual joystick control (movement + body control)
 - Height / posture slider
+- Speed slider
 - Fully customizable mode buttons
 - Auto-discovery of ROS topics
 - Works over rosbridge (WebSocket)
@@ -40,13 +41,15 @@ Your robot must provide:
 2. Connect the app to your robot:
    ws://<robot-ip>:9090
 
-3. Tap Scan to discover available topics
+3. Tap Auto Discover Topics
+   - The app will attemt to discover all topics and provide recommendation
+   - Use the dropdown under each topic
 
-4. Select:
+5. Select (Minimum):
    - Motion Topic (Twist)
    - Mode Topic (String)
 
-5. Configure your mode buttons
+6. Configure your mode buttons
 
 ---
 
