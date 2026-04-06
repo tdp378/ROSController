@@ -184,6 +184,4 @@ This allows the same app to work across many different robots.
 
 ---
 
-## 📄 License
 
-(Add your license here if needed)
