@@ -2,7 +2,7 @@
 
 A universal mobile controller for ROS-based robots using rosbridge.
 
-Control your robot with dual joysticks, height adjustment, and customizable behavior modes — all from a clean, real-time interface.
+Control your robot with dual joysticks, height / speed adjustment, and customizable behavior modes — all from a clean, real-time interface.
 
 ---
 
