@@ -53,6 +53,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -139,6 +140,119 @@ fun CyberTerminalBox(
         )
     }
 }
+
+
+@Composable
+fun HelpDialog(
+    show: Boolean,
+    onDismiss: () -> Unit
+) {
+    CyberDialog(
+        show = show,
+        title = "SYSTEM HELP",
+        confirmText = "",
+        onConfirm = {},
+        onDismiss = onDismiss
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+
+
+            HelpSection("MINIMUM REQUIREMENTS") {
+                HelpBullet("rosbridge websocket (ws://<ip>:9090)")
+                HelpBullet("geometry_msgs/Twist (motion)")
+                HelpBullet("std_msgs/String (mode)")
+            }
+
+            HelpSection("ADD NEW ROBOT") {
+                HelpNote("Robot Tab")
+
+                HelpBullet("Enter robot name")
+                HelpBullet("Enter rosbridge IP:port (192.168.x.x:9090)")
+                HelpBullet("Enter video stream URL (optional)")
+                HelpBullet("Upload robot image (optional)")
+                HelpNote("Topics Tab")
+                HelpBullet("Launch rosbridge on robot")
+                HelpBullet("Tap auto discover topics")
+                HelpBullet("Use dropdowns to verify topics assigned")
+                HelpBullet("Most important is cmd_vel and mode topic")
+                HelpNote("Modes Tab")
+                HelpBullet("Verify configured modes match what the robot expects")
+                HelpBullet("Add or remove modes as needed")
+                HelpBullet("Save robot configuration")
+            }
+
+            HelpSection("CONTROLS") {
+                HelpBullet("Left stick -> movement")
+                HelpBullet("Right stick -> turn/body")
+                HelpBullet("Left slider -> height")
+                HelpBullet("Right slider -> speed")
+            }
+
+            HelpSection("MODES") {
+                Text("Modes send string commands to the robot.", color = HudText)
+                HelpBullet("Walk -> trot")
+                HelpBullet("Stand -> stand")
+                HelpBullet("Sit -> sit")
+                HelpBullet("Lay -> lay")
+            }
+
+            HelpSection("TROUBLESHOOTING") {
+                HelpBullet("No movement -> check cmd_vel topic")
+                HelpBullet("Modes fail -> check mode topic")
+                HelpBullet("No topics -> check rosbridge and network")
+                HelpBullet("Wrong motion -> axis mismatch")
+            }
+
+            HelpSection("PHILOSOPHY") {
+                Text(
+                    "App sends high-level commands. Robot handles low-level control.",
+                    color = HudText
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun HelpSection(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = title,
+            color = HudBlue,
+            fontWeight = FontWeight.Bold,
+            fontSize = 13.sp,
+            letterSpacing = 1.sp
+        )
+        content()
+    }
+}
+
+@Composable
+fun HelpBullet(text: String) {
+    Text(
+        text = "• $text",
+        color = HudText,
+        fontSize = 13.sp,
+        lineHeight = 18.sp
+    )
+}
+
+@Composable
+fun HelpNote(text: String) {
+    Text(
+        text = text,
+        color = HudText,
+        fontSize = 13.sp,
+        lineHeight = 18.sp,
+        textDecoration = TextDecoration.Underline
+
+
+    )
+}
+
 
 @Composable
 fun CyberDialog(
@@ -815,6 +929,7 @@ fun RobotSetupScreen(
     var showRosRequirements by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
+    var showHelp by remember { mutableStateOf(false) }
     var selectedTabOrStep by remember { mutableIntStateOf(initialSelectedTabOrStep) }
     var maxStepReached by remember(isAdding) { mutableIntStateOf(initialSelectedTabOrStep) }
 
@@ -856,15 +971,16 @@ fun RobotSetupScreen(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                "Hardware requires the following environment:",
+                "Minimum Robot Requirements:",
                 color = HudBlue,
                 fontWeight = FontWeight.Bold,
-                fontSize = 12.sp
+                fontSize = 14.sp
             )
-            Text("• ROS2 Humble or later recommended", color = HudText, fontSize = 13.sp)
-            Text("• Rosbridge Suite (WebSocket) installed", color = HudText, fontSize = 13.sp)
-            Text("• Network visibility to Robot IP:9090", color = HudText, fontSize = 13.sp)
-            Text("• MJPEG stream for Video Support", color = HudText, fontSize = 13.sp)
+            Text("• Run robridge - ws://192.168.x.x:9090", color = HudText, fontSize = 13.sp)
+            Text("• Motion topic using - geometry_msgs/Twist", color = HudText, fontSize = 13.sp)
+            Text("• Mode topic using - std_msgs/String", color = HudText, fontSize = 13.sp)
+            Text("Optional:", color = HudBlue, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text("• MJPEG stream for video support", color = HudText, fontSize = 13.sp)
         }
     }
 
@@ -897,6 +1013,12 @@ fun RobotSetupScreen(
         }
     }
 
+    if (showHelp) {
+        HelpDialog(
+            show = true,
+            onDismiss = { showHelp = false }
+        )
+    }
 
     Box(
         modifier = Modifier
@@ -931,38 +1053,63 @@ fun RobotSetupScreen(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        modifier = Modifier.padding(end = 6.dp),
-                        text = "ADD NEW",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = HudBlue,
-                        letterSpacing = 1.sp
-                    )
-
-                    IconButton(
-                        onClick = {
-                            if (hasNoUserRobots) {
-                                showRosRequirements = true
-                            } else {
-                                isAdding = true
-                                selectedTabOrStep = 0
-                                maxStepReached = 0
-                            }
-                        },
-                        modifier = Modifier
-                            .background(HudBlue.copy(alpha = 0.1f), CircleShape)
-                            .border(1.dp, HudBlue.copy(alpha = 0.4f), CircleShape)
-                            .size(36.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Add New",
-                            tint = HudBlue
+
+                        IconButton(
+                            onClick = { showHelp = true },
+                            modifier = Modifier
+                                .background(HudBlue.copy(alpha = 0.1f), CircleShape)
+                                .border(1.dp, HudBlue.copy(alpha = 0.4f), CircleShape)
+                                .size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Help,
+                                contentDescription = "Help",
+                                tint = HudBlue
+                            )
+
+                     
+                        }
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            modifier = Modifier.padding(end = 6.dp),
+                            text = "ADD NEW",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = HudBlue,
+                            letterSpacing = 1.sp
                         )
+
+                        IconButton(
+                            onClick = {
+                                if (hasNoUserRobots) {
+                                    showRosRequirements = true
+                                } else {
+                                    isAdding = true
+                                    selectedTabOrStep = 0
+                                    maxStepReached = 0
+                                }
+                            },
+                            modifier = Modifier
+                                .background(HudBlue.copy(alpha = 0.1f), CircleShape)
+                                .border(1.dp, HudBlue.copy(alpha = 0.4f), CircleShape)
+                                .size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Add New",
+                                tint = HudBlue
+                            )
+                        }
                     }
                 }
 
@@ -980,7 +1127,10 @@ fun RobotSetupScreen(
                             },
                             onDelete = { robotToDelete = robot }
                         )
+
                     }
+
+
                 }
 
                 CyberButton(
@@ -2531,6 +2681,17 @@ fun StartMenuScreenPreview() {
             terminalText = mockTerminalText,
             onLaunchGamepad = {},
             onLaunchSetup = {}
+        )
+    }
+}
+
+@Preview(name = "Help Dialog", device = "spec:width=1280dp,height=800dp,orientation=landscape")
+@Composable
+fun HelpDialogPreview() {
+    JaxGamepadTheme {
+        HelpDialog(
+            show = true,
+            onDismiss = {}
         )
     }
 }

@@ -263,7 +263,7 @@ fun JaxHudScreen(
                 modes.forEach { robotMode ->
                     DynamicModeButton(
                         mode = robotMode,
-                        selected = mode.command.equals(robotMode.command, ignoreCase = true),
+                        selected = mode.label.equals(robotMode.label, ignoreCase = true),
                         onClick = {
                             if (hapticsEnabled) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             mode = robotMode
@@ -485,15 +485,17 @@ fun HudVerticalSlider(
 
 @Composable
 private fun DynamicModeButton(mode: RobotMode, selected: Boolean, onClick: () -> Unit) {
-    val knownIcon = knownModeIcon(mode.command)
-    if (knownIcon != null) {
+    // CHANGED: passing mode.label here
+    val iconRes = knownModeIcon(mode.label)
+
+    if (iconRes != null) {
         ModeButton(
             selected = selected,
             icon = {
                 Image(
-                    painterResource(id = knownIcon),
-                    mode.label,
-                    Modifier.fillMaxSize(),
+                    painter = painterResource(id = iconRes),
+                    contentDescription = mode.label,
+                    modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit
                 )
             },
@@ -501,19 +503,21 @@ private fun DynamicModeButton(mode: RobotMode, selected: Boolean, onClick: () ->
             onClick = onClick
         )
     } else {
+        // Fallback to text if the label doesn't match our "Known" list
         TextModeButton(label = mode.label, selected = selected, onClick = onClick)
     }
 }
 
-private fun knownModeIcon(command: String): Int? {
-    return when (command.lowercase()) {
+private fun knownModeIcon(label: String): Int? {
+    // We use trim() to catch accidental spaces and lowercase() for case-insensitivity
+    return when (label.trim().lowercase()) {
         "stand" -> R.drawable.jax_stand_final
-        "walk" -> R.drawable.jax_walk_final
-        "sit" -> R.drawable.jax_sit_final
-        "lay" -> R.drawable.jax_lay_final
+        "walk"  -> R.drawable.jax_walk_final
+        "sit"   -> R.drawable.jax_sit_final
+        "lay"   -> R.drawable.jax_lay_final
         "shake" -> R.drawable.jax_shake_final
-        "wave" -> R.drawable.jax_wave_final
-        else -> null
+        "wave"  -> R.drawable.jax_wave_final
+        else    -> null
     }
 }
 
@@ -562,10 +566,12 @@ private fun HudTopBar(
         // CENTER: ROS STATUS
         Text(
             text = if (isLinked) "ROS LINK: ONLINE" else "ROS LINK: OFFLINE",
-            color = HudText,
+            color = if (isLinked) HudText else Color(0xFFFF3B30),
             fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace,
             modifier = Modifier.padding(vertical = 8.dp)
+
         )
 
         // RIGHT SPACER
@@ -736,7 +742,8 @@ fun HudJoystick(
                         if (hapticsEnabled && dist >= radius) {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         }
-                        val clamped = if (dist > radius && dist != 0f) delta * (radius / dist) else delta
+                        val clamped =
+                            if (dist > radius && dist != 0f) delta * (radius / dist) else delta
                         dragOffset = Offset(clamped.x / radius, clamped.y / radius)
                         onValueChanged(dragOffset.x, -dragOffset.y)
                     },
@@ -749,7 +756,8 @@ fun HudJoystick(
                         if (hapticsEnabled && dist >= radius) {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         }
-                        val clamped = if (dist > radius && dist != 0f) delta * (radius / dist) else delta
+                        val clamped =
+                            if (dist > radius && dist != 0f) delta * (radius / dist) else delta
                         dragOffset = Offset(clamped.x / radius, clamped.y / radius)
                         onValueChanged(dragOffset.x, -dragOffset.y)
                     },
