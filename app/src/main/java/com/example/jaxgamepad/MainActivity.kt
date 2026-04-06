@@ -1256,37 +1256,61 @@ fun RobotSetupScreen(
                     contentScale = ContentScale.Fit
                 )
 
-                TabRow(
-                    selectedTabIndex = selectedTabOrStep,
-                    containerColor = Color.Transparent,
-                    contentColor = HudBlue,
-                    indicator = { tabPositions ->
-                        if (selectedTabOrStep < tabPositions.size) {
-                            TabRowDefaults.SecondaryIndicator(
-                                modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTabOrStep]),
-                                color = HudBlue
-                            )
-                        }
-                    },
-                    divider = {}
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    tabsOrSteps.forEachIndexed { index, title ->
-                        val isEnabled = !isAdding || index <= maxStepReached
-                        Tab(
-                            selected = selectedTabOrStep == index,
-                            onClick = { if (isEnabled) selectedTabOrStep = index },
-                            enabled = isEnabled,
-                            text = {
-                                Text(
-                                    text = title,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isEnabled) HudText else HudBlue
-                                )
-                            }
+                    // 1. HELP ICON (Left Aligned)
+                    IconButton(
+                        onClick = { showHelp = true },
+                        modifier = Modifier
+                            .padding(end = 8.dp)
+                            .background(HudBlue.copy(alpha = 0.1f), CircleShape)
+                            .border(1.dp, HudBlue.copy(alpha = 0.4f), CircleShape)
+                            .size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Help,
+                            contentDescription = "Help",
+                            tint = HudBlue,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
+
+                    // 2. TAB ROW (Takes remaining space)
+                    TabRow(
+                        selectedTabIndex = selectedTabOrStep,
+                        containerColor = Color.Transparent,
+                        contentColor = HudBlue,
+                        indicator = { tabPositions ->
+                            if (selectedTabOrStep < tabPositions.size) {
+                                TabRowDefaults.SecondaryIndicator(
+                                    modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTabOrStep]),
+                                    color = HudBlue
+                                )
+                            }
+                        },
+                        divider = {}
+                    ) {
+                        tabsOrSteps.forEachIndexed { index, title ->
+                            val isEnabled = !isAdding || index <= maxStepReached
+                            Tab(
+                                selected = selectedTabOrStep == index,
+                                onClick = { if (isEnabled) selectedTabOrStep = index },
+                                enabled = isEnabled,
+                                text = {
+                                    Text(
+                                        text = title,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isEnabled) HudText else HudBlue
+                                    )
+                                }
+                            )
+                        }
+                    }
                 }
+
 
                 Column(
                     modifier = Modifier
