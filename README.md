@@ -57,14 +57,15 @@ Your robot must provide:
 
 - Left Joystick → Forward / Strafe  
 - Right Joystick → Turn or Body Control (mode dependent)  
-- Vertical Slider → Height / posture  
+- Vertical Slider Left → Height / posture
+- Vertical Slider Right → Speed
 - Mode Buttons → Switch behaviors  
 
 ---
 
 ## 🔘 Modes
 
-Modes are fully customizable.
+The app intially inserts 6 standard modes but they are fully customizable.
 
 Each button has:
 - Label → Displayed in the UI  
