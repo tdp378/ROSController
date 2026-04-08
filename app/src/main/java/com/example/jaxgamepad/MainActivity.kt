@@ -79,6 +79,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import com.google.firebase.firestore.FirebaseFirestore
 import android.util.Log
+import com.example.jaxgamepad.ProfileScreen
+import com.google.firebase.auth.FirebaseAuth
+
 
 
 
@@ -461,12 +464,13 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-enum class Screen { Menu, Gamepad, RobotSetup }
+enum class Screen { Menu, Gamepad, RobotSetup, Account }
 
 @Composable
 fun AppNavigation(reHideSystemBars: () -> Unit) {
     val context = LocalContext.current
     val robotManager = remember { RobotManager(context) }
+
 
     var terminalText by remember { mutableStateOf("") }
     var hasBooted by remember { mutableStateOf(false) }
@@ -585,13 +589,16 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
         mutableStateOf(savedRobots.firstOrNull() ?: RobotConfig("ROSbot (Demo)", "", ""))
     }
     var hapticsEnabled by remember { mutableStateOf(true) }
+    var signedInUser by remember { mutableStateOf(FirebaseAuth.getInstance().currentUser) }
 
     val ros = remember { RosbridgeClient() }
     val activity = LocalContext.current as? ComponentActivity
 
+    val portraitScreens = setOf(Screen.Menu, Screen.RobotSetup, Screen.Account)
+
     LaunchedEffect(currentScreen) {
         activity?.let {
-            if (currentScreen == Screen.RobotSetup || currentScreen == Screen.Menu) {
+            if (currentScreen in portraitScreens) {
                 it.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                 WindowInsetsControllerCompat(it.window, it.window.decorView)
                     .show(WindowInsetsCompat.Type.systemBars())
@@ -607,11 +614,24 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
             ros = ros,
             savedRobots = savedRobots,
             terminalText = terminalText,
+            isSignedIn = signedInUser != null,
+            signedInLabel = signedInUser?.email ?: "Signed in",
             onLaunchGamepad = { robot ->
                 currentRobot = robot
                 currentScreen = Screen.Gamepad
             },
-            onLaunchSetup = { currentScreen = Screen.RobotSetup }
+            onLaunchSetup = { currentScreen = Screen.RobotSetup },
+            onOpenAccount = {
+                signedInUser = FirebaseAuth.getInstance().currentUser
+                currentScreen = Screen.Account
+            }
+        )
+
+        Screen.Account -> AccountScreen(
+            onBack = {
+                signedInUser = FirebaseAuth.getInstance().currentUser
+                currentScreen = Screen.Menu
+            }
         )
 
         Screen.Gamepad -> JaxDriverScreen(
@@ -1851,10 +1871,14 @@ fun StartMenuScreen(
     ros: RosbridgeClient,
     savedRobots: List<RobotConfig>,
     terminalText: String,
+    isSignedIn: Boolean,
+    signedInLabel: String,
     onLaunchGamepad: (RobotConfig) -> Unit,
-    onLaunchSetup: () -> Unit
+    onLaunchSetup: () -> Unit,
+    onOpenAccount: () -> Unit
 ) {
     var showRobotSelectDialog by remember { mutableStateOf(false) }
+
     var showNoRobotWarning by remember { mutableStateOf(false) }
 
     CyberDialog(
@@ -1951,7 +1975,7 @@ fun StartMenuScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 CyberButton(
                     onClick = onLaunchSetup,
@@ -1964,11 +1988,32 @@ fun StartMenuScreen(
                         contentScale = ContentScale.Fit
                     )
                 }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = if (isSignedIn) "SIGNED IN: $signedInLabel" else "NOT SIGNED IN",
+                    color = if (isSignedIn) HudBlue else HudText.copy(alpha = 0.7f),
+                    fontSize = 12.sp
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                TextButton(
+                    onClick = onOpenAccount
+                ) {
+                    Text(
+                        text = if (isSignedIn) "ACCOUNT" else "CREATE PROFILE",
+                        color = HudBlue,
+                        fontSize = 14.sp
+                    )
+                }
+                }
             }
-            Spacer(modifier = Modifier.weight(.2f))
+
         }
     }
-}
+
 
 @Composable
 fun RobotSelectionDialog(
@@ -2245,15 +2290,15 @@ fun MainMenuPanel(content: @Composable ColumnScope.() -> Unit) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1.5f),
-            contentAlignment = Alignment.Center
+                .height(260.dp),   // was aspectRatio(1.5f)
+            contentAlignment = Alignment.TopCenter
         ) {
             Column(
                 modifier = Modifier
                     .matchParentSize()
-                    .padding(horizontal = 8.dp, vertical = 40.dp),
+                    .padding(horizontal = 8.dp, vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
+                verticalArrangement = Arrangement.Top,
                 content = content
             )
         }
@@ -3017,34 +3062,6 @@ fun PreviewEditRobotScreen() {
         )
     }
 }
-@Preview(showBackground = true, widthDp = 412, heightDp = 915)
-@Composable
-fun PreviewStartMenuScreen() {
-    JaxGamepadTheme {
-        StartMenuScreen(
-            ros = RosbridgeClient(),
-            savedRobots = listOf(
-                RobotConfig(
-                    name = "Jax",
-                    rosAddress = "192.168.1.154:9090",
-                    videoUrl = "http://192.168.1.154:8080/stream?topic=/image_raw",
-                    thumbnailPath = "demo_thumb",
-                    cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
-                    modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
-                    jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
-                    modes = listOf(
-                        RobotMode("STAND", "stand"),
-                        RobotMode("WALK", "walk"),
-                        RobotMode("SIT", "sit")
-                    )
-                )
-            ),
-            terminalText = "> BOOTING_ROS_CONTROLLER\\n|>\\n|> LINK: WIFI_CONNECTED\\n|> IP: 192.168.1.154\\n|> STATUS: SYSTEM_READY_",
-            onLaunchGamepad = {},
-            onLaunchSetup = {}
-        )
-    }
-}
 
 @Preview(showBackground = true, widthDp = 915, heightDp = 412)
 @Composable
@@ -3079,31 +3096,39 @@ fun PreviewJaxDriverScreen() {
     }
 }
 
-@Preview(showBackground = true, widthDp = 412, heightDp = 915)
+@Preview(
+    name = "Main Menu - Terminal Booted",
+    showBackground = true,
+    device = "spec:width=411dp,height=891dp,orientation=portrait"
+)
 @Composable
-fun PreviewRobotSetupScreen() {
+fun StartMenuScreenPreview() {
+    val mockTerminalText = """> BOOTING_ROS_CONTROLLER...
+|> 
+|> LINK: WIFI_CONNECTED
+|> ADDR: 192.168.1.15
+|> 
+|> STATUS: SYSTEM_READY_"""
+
+    val sampleRobots = listOf(
+        RobotConfig(
+            name = "Jax-1",
+            rosAddress = "192.168.1.15",
+            videoUrl = "http://192.168.1.15:8080/stream",
+            thumbnailPath = "demo_thumb"
+        )
+    )
+
     JaxGamepadTheme {
-        RobotSetupScreen(
+        StartMenuScreen(
             ros = RosbridgeClient(),
-            savedRobots = listOf(
-                RobotConfig(
-                    name = "Jax",
-                    rosAddress = "192.168.1.154:9090",
-                    videoUrl = "http://192.168.1.154:8080/stream?topic=/image_raw",
-                    thumbnailPath = "demo_thumb",
-                    cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
-                    modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
-                    jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
-                    modes = listOf(
-                        RobotMode("STAND", "stand"),
-                        RobotMode("WALK", "walk"),
-                        RobotMode("SIT", "sit")
-                    )
-                )
-            ),
-            onSave = { _, _ -> },
-            onDelete = {},
-            onBack = {}
+            savedRobots = sampleRobots,
+            terminalText = mockTerminalText,
+            isSignedIn = false,
+            signedInLabel = "",
+            onLaunchGamepad = {},
+            onLaunchSetup = {},
+            onOpenAccount = {}
         )
     }
 }

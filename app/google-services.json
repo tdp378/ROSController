@@ -12,7 +12,20 @@
           "package_name": "com.example.jaxgamepad"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "728664292406-a61i44qefb0t3e8p7plhmirosj2elnoa.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.jaxgamepad",
+            "certificate_hash": "11caed1f86b9635ea1ba6416b93f742d547cd82c"
+          }
+        },
+        {
+          "client_id": "728664292406-vqdmgipg82n95ffbhq18as5eki65mlqr.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDQz54QcT1LdkMyXbPYNfh0qx51FdO9yng"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "728664292406-vqdmgipg82n95ffbhq18as5eki65mlqr.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
