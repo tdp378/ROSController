@@ -7,7 +7,12 @@ import org.json.JSONObject
 class RobotManager(context: Context) {
     private val prefs = context.getSharedPreferences("robot_prefs", Context.MODE_PRIVATE)
 
-    fun saveRobots(robots: List<RobotConfig>) {
+    private fun robotsKey(userUid: String?): String {
+        val profileKey = userUid?.takeIf { it.isNotBlank() } ?: "__guest__"
+        return "saved_robots_$profileKey"
+    }
+
+    fun saveRobotsForUser(userUid: String?, robots: List<RobotConfig>) {
         val array = JSONArray()
 
         robots.forEach { robot ->
@@ -16,6 +21,7 @@ class RobotManager(context: Context) {
                 put("rosAddress", robot.rosAddress)
                 put("videoUrl", robot.videoUrl)
                 put("thumbnailPath", robot.thumbnailPath)
+                put("ownerUid", robot.ownerUid ?: userUid)
 
                 put("cmdVelTopic", robot.cmdVelTopic?.toJson())
                 put("modeTopic", robot.modeTopic?.toJson())
@@ -39,7 +45,6 @@ class RobotManager(context: Context) {
                 robot.enabledIndicators.forEach { indicatorsArray.put(it) }
                 put("enabledIndicators", indicatorsArray)
 
-                // NEW
                 put("totalUptimeSeconds", robot.totalUptimeSeconds)
                 put("totalDistanceMeters", robot.totalDistanceMeters)
 
@@ -52,11 +57,15 @@ class RobotManager(context: Context) {
             array.put(obj)
         }
 
-        prefs.edit().putString("saved_robots", array.toString()).apply()
+        prefs.edit().putString(robotsKey(userUid), array.toString()).apply()
     }
 
-    fun loadRobots(): List<RobotConfig> {
-        val jsonString = prefs.getString("saved_robots", null)
+    fun loadRobotsForUser(userUid: String?): List<RobotConfig> {
+        val primaryKey = robotsKey(userUid)
+        val jsonString = prefs.getString(
+            primaryKey,
+            if (userUid == null) prefs.getString("saved_robots", null) else null
+        )
         if (jsonString.isNullOrBlank()) return emptyList()
 
         val robots = mutableListOf<RobotConfig>()
@@ -78,6 +87,7 @@ class RobotManager(context: Context) {
                         rosAddress = obj.optString("rosAddress", ""),
                         videoUrl = obj.optString("videoUrl", ""),
                         thumbnailPath = if (obj.isNull("thumbnailPath")) null else obj.optString("thumbnailPath", null),
+                        ownerUid = if (obj.isNull("ownerUid")) userUid else obj.optString("ownerUid", userUid),
                         cmdVelTopic = obj.optJSONObject("cmdVelTopic")?.toTopicBinding(),
                         modeTopic = obj.optJSONObject("modeTopic")?.toTopicBinding(),
                         batteryTopic = obj.optJSONObject("batteryTopic")?.toTopicBinding(),
@@ -86,8 +96,6 @@ class RobotManager(context: Context) {
                         jointStateTopic = obj.optJSONObject("jointStateTopic")?.toTopicBinding(),
                         modes = obj.optJSONArray("modes")?.toRobotModes() ?: emptyList(),
                         enabledIndicators = indicatorsList,
-
-                        // NEW
                         totalUptimeSeconds = obj.optLong("totalUptimeSeconds", 0L),
                         totalDistanceMeters = obj.optDouble("totalDistanceMeters", 0.0),
                         invertForwardBack = obj.optBoolean("invertForwardBack", false),
@@ -102,6 +110,10 @@ class RobotManager(context: Context) {
         }
         return robots
     }
+
+    fun saveRobots(robots: List<RobotConfig>) = saveRobotsForUser(null, robots)
+
+    fun loadRobots(): List<RobotConfig> = loadRobotsForUser(null)
 
     fun clearAll() {
         prefs.edit().clear().apply()

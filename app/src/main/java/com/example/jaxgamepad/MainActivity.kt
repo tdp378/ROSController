@@ -101,16 +101,24 @@ val TerminalCyan = Color(0xFF8FE9FF)
 
 fun saveRobotConfigToFirestore(
     robot: RobotConfig,
+    ownerUid: String?,
     onResult: (String) -> Unit = {}
 ) {
     try {
         val db = FirebaseFirestore.getInstance()
+        val resolvedOwnerUid = ownerUid ?: FirebaseAuth.getInstance().currentUser?.uid
+
+        if (resolvedOwnerUid.isNullOrBlank()) {
+            onResult("CLOUD SYNC SKIPPED\nSIGN IN REQUIRED")
+            return
+        }
 
         val data = hashMapOf(
             "name" to robot.name,
             "rosAddress" to robot.rosAddress,
             "videoUrl" to robot.videoUrl,
             "thumbnailPath" to robot.thumbnailPath,
+            "ownerUid" to resolvedOwnerUid,
             "invertForwardBack" to robot.invertForwardBack,
             "invertStrafe" to robot.invertStrafe,
             "invertHeight" to robot.invertHeight,
@@ -146,7 +154,9 @@ fun saveRobotConfigToFirestore(
             }
         )
 
-        db.collection("robots")
+        db.collection("users")
+            .document(resolvedOwnerUid)
+            .collection("robots")
             .document(robot.name)
             .set(data)
             .addOnSuccessListener {
@@ -551,15 +561,25 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
         }
     }
 
-    var savedRobots by remember {
-        val loaded = robotManager.loadRobots()
+    var savedRobots by remember { mutableStateOf<List<RobotConfig>>(emptyList()) }
+
+    var currentScreen by remember { mutableStateOf(Screen.Menu) }
+    var currentRobot by remember {
+        mutableStateOf(RobotConfig("ROSbot (Demo)", "", ""))
+    }
+    var hapticsEnabled by remember { mutableStateOf(true) }
+    var signedInUser by remember { mutableStateOf(FirebaseAuth.getInstance().currentUser) }
+
+    LaunchedEffect(signedInUser?.uid) {
+        val loaded = robotManager.loadRobotsForUser(signedInUser?.uid)
         val cleaned = if (loaded.isEmpty() || loaded.any { it.name.lowercase() == "jax-1" }) {
-            val sample = listOf(
+            listOf(
                 RobotConfig(
                     name = "ROSbot (Demo)",
                     rosAddress = "192.168.1.XX",
                     videoUrl = "http://192.168.1.XX:8080/stream?topic=/camera/image_raw",
                     thumbnailPath = "demo_thumb",
+                    ownerUid = signedInUser?.uid,
                     cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
                     modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
                     jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
@@ -575,21 +595,16 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
                     invertStrafe = true,
                     invertHeight = false,
                     invertTurn = true
-
                 )
             )
-            robotManager.saveRobots(sample)
-            sample
         } else loaded
-        mutableStateOf(cleaned)
-    }
 
-    var currentScreen by remember { mutableStateOf(Screen.Menu) }
-    var currentRobot by remember {
-        mutableStateOf(savedRobots.firstOrNull() ?: RobotConfig("ROSbot (Demo)", "", ""))
+        savedRobots = cleaned
+
+        if (cleaned.none { it.name == currentRobot.name }) {
+            currentRobot = cleaned.firstOrNull() ?: RobotConfig("ROSbot (Demo)", "", "")
+        }
     }
-    var hapticsEnabled by remember { mutableStateOf(true) }
-    var signedInUser by remember { mutableStateOf(FirebaseAuth.getInstance().currentUser) }
 
     val ros = remember { RosbridgeClient() }
     val activity = LocalContext.current as? ComponentActivity
@@ -646,7 +661,7 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
                 if (idx != -1) {
                     list[idx] = newRobot
                     savedRobots = list
-                    robotManager.saveRobots(list)
+                    robotManager.saveRobotsForUser(signedInUser?.uid, list)
                 }
             },
             onHapticsChange = { hapticsEnabled = it },
@@ -658,18 +673,19 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
         Screen.RobotSetup -> RobotSetupScreen(
             ros = ros,
             savedRobots = savedRobots,
+            currentUserId = signedInUser?.uid,
             onSave = { oldName, newRobot ->
                 val list = savedRobots.toMutableList()
                 val index = list.indexOfFirst { it.name == oldName }
                 if (index != -1) list[index] = newRobot else list.add(newRobot)
                 savedRobots = list
-                robotManager.saveRobots(list)
+                robotManager.saveRobotsForUser(signedInUser?.uid, list)
                 if (currentRobot.name == oldName) currentRobot = newRobot
             },
             onDelete = { robot ->
                 val list = savedRobots.filter { it.name != robot.name }
                 savedRobots = list
-                robotManager.saveRobots(list)
+                robotManager.saveRobotsForUser(signedInUser?.uid, list)
                 if (list.isNotEmpty()) {
                     currentRobot = list.first()
                 }
@@ -967,6 +983,7 @@ fun JaxDriverScreen(
 fun RobotSetupScreen(
     ros: RosbridgeClient,
     savedRobots: List<RobotConfig>,
+    currentUserId: String?,
     onSave: (String?, RobotConfig) -> Unit,
     onDelete: (RobotConfig) -> Unit,
     onBack: () -> Unit,
@@ -1757,6 +1774,7 @@ fun RobotSetupScreen(
                                     rosAddress = addr,
                                     videoUrl = url,
                                     thumbnailPath = thumb,
+                                    ownerUid = currentUserId ?: initial.ownerUid,
                                     cmdVelTopic = cmdVelTopic,
                                     modeTopic = modeTopic,
                                     batteryTopic = batteryTopic,
@@ -1778,7 +1796,7 @@ fun RobotSetupScreen(
                                 firestoreStatus = "Saving robot to cloud..."
                                 pendingCloseAfterCloudSave = true
 
-                                saveRobotConfigToFirestore(newConfig) { result ->
+                                saveRobotConfigToFirestore(newConfig, currentUserId) { result ->
                                     firestoreStatus = result
                                     showCloudResultDialog = true
                                 }
@@ -2008,11 +2026,11 @@ fun StartMenuScreen(
                         fontSize = 14.sp
                     )
                 }
-                }
             }
-
         }
+
     }
+}
 
 
 @Composable
@@ -2864,204 +2882,12 @@ fun ModeEditDialog(
         }
     }
 }
-@Preview(showBackground = true, widthDp = 412, heightDp = 915, name = "Robot List")
-@Composable
-fun PreviewRobotSetupListScreen() {
-    JaxGamepadTheme {
-        RobotSetupScreen(
-            ros = RosbridgeClient(),
-            savedRobots = listOf(
-                RobotConfig(
-                    name = "Jax",
-                    rosAddress = "192.168.1.154:9090",
-                    videoUrl = "http://192.168.1.154:8080/stream?topic=/image_raw",
-                    thumbnailPath = "demo_thumb",
-                    cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
-                    modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
-                    jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
-                    modes = listOf(
-                        RobotMode("STAND", "stand"),
-                        RobotMode("WALK", "walk"),
-                        RobotMode("SIT", "sit")
-                    )
-                )
-            ),
-            onSave = { _, _ -> },
-            onDelete = {},
-            onBack = {}
-        )
-    }
-}
 
-@Preview(showBackground = true, widthDp = 412, heightDp = 915, name = "New Robot - Step 1")
-@Composable
-fun PreviewNewRobotStep1() {
-    JaxGamepadTheme {
-        RobotSetupScreen(
-            ros = RosbridgeClient(),
-            savedRobots = listOf(
-                RobotConfig(
-                    name = "ROSbot (Demo)",
-                    rosAddress = "192.168.1.XX:9090",
-                    videoUrl = "",
-                    thumbnailPath = "demo_thumb",
-                    cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
-                    modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
-                    jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
-                    modes = listOf(
-                        RobotMode("STAND", "stand"),
-                        RobotMode("WALK", "walk")
-                    )
-                )
-            ),
-            onSave = { _, _ -> },
-            onDelete = {},
-            onBack = {},
-            initialEditingRobot = RobotConfig(
-                name = "",
-                rosAddress = "",
-                videoUrl = "",
-                thumbnailPath = null,
-                modes = emptyList()
-            ),
-            initialIsAdding = true,
-            initialSelectedTabOrStep = 0
-        )
-    }
-}
 
-@Preview(showBackground = true, widthDp = 412, heightDp = 915, name = "New Robot - Topics")
-@Composable
-fun PreviewNewRobotStep2Topics() {
-    JaxGamepadTheme {
-        RobotSetupScreen(
-            ros = RosbridgeClient(),
-            savedRobots = listOf(
-                RobotConfig(
-                    name = "ROSbot (Demo)",
-                    rosAddress = "192.168.1.XX:9090",
-                    videoUrl = "",
-                    thumbnailPath = "demo_thumb",
-                    cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
-                    modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
-                    jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
-                    modes = listOf(
-                        RobotMode("STAND", "stand"),
-                        RobotMode("WALK", "walk")
-                    )
-                )
-            ),
-            onSave = { _, _ -> },
-            onDelete = {},
-            onBack = {},
-            initialEditingRobot = RobotConfig(
-                name = "Jax",
-                rosAddress = "192.168.1.154:9090",
-                videoUrl = "http://192.168.1.154:8080/stream?topic=/image_raw",
-                thumbnailPath = null,
-                modes = emptyList()
-            ),
-            initialIsAdding = true,
-            initialSelectedTabOrStep = 1
-        )
-    }
-}
 
-@Preview(showBackground = true, widthDp = 412, heightDp = 915, name = "New Robot - Modes")
-@Composable
-fun PreviewNewRobotStep3Modes() {
-    JaxGamepadTheme {
-        RobotSetupScreen(
-            ros = RosbridgeClient(),
-            savedRobots = listOf(
-                RobotConfig(
-                    name = "ROSbot (Demo)",
-                    rosAddress = "192.168.1.XX:9090",
-                    videoUrl = "",
-                    thumbnailPath = "demo_thumb",
-                    cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
-                    modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
-                    jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
-                    modes = listOf(
-                        RobotMode("STAND", "stand"),
-                        RobotMode("WALK", "walk")
-                    )
-                )
-            ),
-            onSave = { _, _ -> },
-            onDelete = {},
-            onBack = {},
-            initialEditingRobot = RobotConfig(
-                name = "Jax",
-                rosAddress = "192.168.1.154:9090",
-                videoUrl = "http://192.168.1.154:8080/stream?topic=/image_raw",
-                thumbnailPath = null,
-                modes = listOf(
-                    RobotMode("STAND", "stand"),
-                    RobotMode("WALK", "walk"),
-                    RobotMode("SIT", "sit")
-                )
-            ),
-            initialIsAdding = true,
-            initialSelectedTabOrStep = 2
-        )
-    }
-}
 
-@Preview(showBackground = true, widthDp = 412, heightDp = 915, name = "Edit Robot")
-@Composable
-fun PreviewEditRobotScreen() {
-    JaxGamepadTheme {
-        RobotSetupScreen(
-            ros = RosbridgeClient(),
-            savedRobots = listOf(
-                RobotConfig(
-                    name = "Jax",
-                    rosAddress = "192.168.1.154:9090",
-                    videoUrl = "http://192.168.1.154:8080/stream?topic=/image_raw",
-                    thumbnailPath = "demo_thumb",
-                    cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
-                    modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
-                    jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
-                    modes = listOf(
-                        RobotMode("STAND", "stand"),
-                        RobotMode("WALK", "walk"),
-                        RobotMode("SIT", "sit"),
-                        RobotMode("LAY", "lay")
-                    ),
-                    invertForwardBack = false,
-                    invertStrafe = true,
-                    invertHeight = false,
-                    invertTurn = true
-                )
-            ),
-            onSave = { _, _ -> },
-            onDelete = {},
-            onBack = {},
-            initialEditingRobot = RobotConfig(
-                name = "Jax",
-                rosAddress = "192.168.1.154:9090",
-                videoUrl = "http://192.168.1.154:8080/stream?topic=/image_raw",
-                thumbnailPath = "demo_thumb",
-                cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
-                modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
-                jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
-                modes = listOf(
-                    RobotMode("STAND", "stand"),
-                    RobotMode("WALK", "walk"),
-                    RobotMode("SIT", "sit"),
-                    RobotMode("LAY", "lay")
-                ),
-                invertForwardBack = false,
-                invertStrafe = true,
-                invertHeight = false,
-                invertTurn = true
-            ),
-            initialIsAdding = false,
-            initialSelectedTabOrStep = 0
-        )
-    }
-}
+
+
 
 @Preview(showBackground = true, widthDp = 915, heightDp = 412)
 @Composable

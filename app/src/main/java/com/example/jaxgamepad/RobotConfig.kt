@@ -17,6 +17,7 @@ data class RobotConfig(
     val rosAddress: String,
     val videoUrl: String,
     val thumbnailPath: String? = null,
+    val ownerUid: String? = null,
 
     val cmdVelTopic: TopicBinding? = null,
     val modeTopic: TopicBinding? = null,
