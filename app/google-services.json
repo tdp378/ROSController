@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "728664292406",
+    "project_id": "ros-controller-da42c",
+    "storage_bucket": "ros-controller-da42c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:728664292406:android:68e6891e055475de486c97",
+        "android_client_info": {
+          "package_name": "com.example.jaxgamepad"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDQz54QcT1LdkMyXbPYNfh0qx51FdO9yng"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
