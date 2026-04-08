@@ -49,6 +49,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -74,6 +75,13 @@ import java.io.FileOutputStream
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.util.UUID
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import com.google.firebase.firestore.FirebaseFirestore
+import android.util.Log
+
+
+
 
 // --- UI Constants ---
 val HudBlue = Color(0xFF0e7edb)
@@ -85,6 +93,73 @@ val Black = Color(0xFF000000)
 val TerminalCyan = Color(0xFF8FE9FF)
 
 // --- Network Helper Function ---
+
+
+
+fun saveRobotConfigToFirestore(
+    robot: RobotConfig,
+    onResult: (String) -> Unit = {}
+) {
+    try {
+        val db = FirebaseFirestore.getInstance()
+
+        val data = hashMapOf(
+            "name" to robot.name,
+            "rosAddress" to robot.rosAddress,
+            "videoUrl" to robot.videoUrl,
+            "thumbnailPath" to robot.thumbnailPath,
+            "invertForwardBack" to robot.invertForwardBack,
+            "invertStrafe" to robot.invertStrafe,
+            "invertHeight" to robot.invertHeight,
+            "invertTurn" to robot.invertTurn,
+            "enabledIndicators" to robot.enabledIndicators,
+            "totalUptimeSeconds" to robot.totalUptimeSeconds,
+            "totalDistanceMeters" to robot.totalDistanceMeters,
+            "updatedAt" to System.currentTimeMillis(),
+
+            "cmdVelTopic_name" to robot.cmdVelTopic?.name,
+            "cmdVelTopic_type" to robot.cmdVelTopic?.type,
+
+            "modeTopic_name" to robot.modeTopic?.name,
+            "modeTopic_type" to robot.modeTopic?.type,
+
+            "batteryTopic_name" to robot.batteryTopic?.name,
+            "batteryTopic_type" to robot.batteryTopic?.type,
+
+            "imuTopic_name" to robot.imuTopic?.name,
+            "imuTopic_type" to robot.imuTopic?.type,
+
+            "odomTopic_name" to robot.odomTopic?.name,
+            "odomTopic_type" to robot.odomTopic?.type,
+
+            "jointStateTopic_name" to robot.jointStateTopic?.name,
+            "jointStateTopic_type" to robot.jointStateTopic?.type,
+
+            "modes" to robot.modes.map {
+                hashMapOf(
+                    "label" to it.label,
+                    "command" to it.command
+                )
+            }
+        )
+
+        db.collection("robots")
+            .document(robot.name)
+            .set(data)
+            .addOnSuccessListener {
+                Log.d("FIRESTORE_ROBOT", "Saved robot: ${robot.name}")
+                onResult("- CLOUD SYNC SUCCESSFUL")
+            }
+            .addOnFailureListener { e ->
+                Log.e("FIRESTORE_ROBOT", "Failed saving robot", e)
+                onResult("CLOUD SYNC FAILED\n${e.message ?: "Unknown error"}")
+            }
+    } catch (e: Exception) {
+        Log.e("FIRESTORE_ROBOT", "Exception saving robot", e)
+        onResult("CLOUD SYNC FAILED\n${e.message ?: "Unknown error"}")
+    }
+}
+
 fun getNetworkDetails(context: Context): Pair<String, String> {
     val ipAddress = try {
         NetworkInterface.getNetworkInterfaces().toList()
@@ -170,6 +245,7 @@ fun HelpDialog(
                 HelpBullet("Enter rosbridge IP:port (192.168.x.x:9090)")
                 HelpBullet("Enter video stream URL (optional)")
                 HelpBullet("Upload robot image (optional)")
+                HelpBullet("Axis settings should stay normal unless the controller is reversed")
                 HelpNote("Topics Tab")
                 HelpBullet("Launch rosbridge on robot")
                 HelpBullet("Tap auto discover topics")
@@ -188,27 +264,15 @@ fun HelpDialog(
                 HelpBullet("Right slider -> speed")
             }
 
-            HelpSection("MODES") {
-                Text("Modes send string commands to the robot.", color = HudText)
-                HelpBullet("Walk -> trot")
-                HelpBullet("Stand -> stand")
-                HelpBullet("Sit -> sit")
-                HelpBullet("Lay -> lay")
-            }
 
             HelpSection("TROUBLESHOOTING") {
-                HelpBullet("No movement -> check cmd_vel topic")
-                HelpBullet("Modes fail -> check mode topic")
-                HelpBullet("No topics -> check rosbridge and network")
-                HelpBullet("Wrong motion -> axis mismatch")
+                HelpBullet("No movement -> check cmd_vel topic. Your ROS node must be configured to use geometry_msgs/Twist ")
+                HelpBullet("Modes fail -> check mode topic. Your ROS node must be configured to use std_msgs/String")
+                HelpBullet("No topics listed when taping auto discover topics -> check that rosbridge is running and ensure network is connected")
+                HelpBullet("Wrong motion -> axis mismatch. Choose inverted on the incorrect axis in setup")
             }
 
-            HelpSection("PHILOSOPHY") {
-                Text(
-                    "App sends high-level commands. Robot handles low-level control.",
-                    color = HudText
-                )
-            }
+
         }
     }
 }
@@ -537,7 +601,12 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
                         RobotMode("SHAKE", "shake"),
                         RobotMode("SIT", "sit"),
                         RobotMode("WAVE", "wave"),
-                    )
+                    ),
+                    invertForwardBack = false,
+                    invertStrafe = true,
+                    invertHeight = false,
+                    invertTurn = true
+
                 )
             )
             robotManager.saveRobots(sample)
@@ -694,11 +763,11 @@ fun JaxDriverScreen(
         bodyPitchY,
         currentRobot
     ) {
+        val linearX = if (currentRobot.invertForwardBack) -moveY else moveY
+        val linearY = if (currentRobot.invertStrafe) -moveX else moveX
+        val linearZ = if (currentRobot.invertHeight) -bodyHeightZ else bodyHeightZ
+        val angularZ = if (currentRobot.invertTurn) -turnZ else turnZ
 
-        val linearX = moveY        // flip forward/back if needed
-        val linearY = -moveX         // flip if strafing is wrong
-        val linearZ = bodyHeightZ   // or -bodyHeightZ
-        val angularZ = -turnZ        // or -turnZ
         val publishJob: Job? = if (ros.isConnected) {
             scope.launch {
                 while (true) {
@@ -799,13 +868,11 @@ fun JaxDriverScreen(
     }
 
     if (showTerminateVerify) {
-        // Determine the label based on connection status
         val powerActionText = if (ros.isConnected) "" else "RECONNECT ▶"
 
         CyberDialog(
             show = showTerminateVerify,
             title = "POWER OPTIONS",
-            // If it's blank, we'll handle the button logic below
             confirmText = powerActionText,
             onConfirm = {
                 if (!ros.isConnected) {
@@ -832,13 +899,14 @@ fun JaxDriverScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Red "Emergency Exit" button always visible in the content area
             CyberButton(
                 onClick = {
                     showTerminateVerify = false
                     onBackToMenu()
                 },
-                modifier = Modifier.fillMaxWidth().height(42.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(42.dp)
             ) {
                 Box(
                     modifier = Modifier
@@ -928,15 +996,15 @@ fun RobotSetupScreen(
     var modeToDeleteIndex by remember { mutableStateOf<Int?>(null) }
     var showRosRequirements by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-
+    var firestoreStatus by remember { mutableStateOf("") }
+    var showCloudResultDialog by remember { mutableStateOf(false) }
+    var pendingCloseAfterCloudSave by remember { mutableStateOf(false) }
     var showHelp by remember { mutableStateOf(false) }
     var selectedTabOrStep by remember { mutableIntStateOf(initialSelectedTabOrStep) }
     var maxStepReached by remember(isAdding) { mutableIntStateOf(initialSelectedTabOrStep) }
 
     val hasNoUserRobots =
         savedRobots.size <= 1 && savedRobots.any { it.name.contains("Demo", ignoreCase = true) }
-
-
 
     CyberDialog(
         show = showRosRequirements,
@@ -1001,6 +1069,52 @@ fun RobotSetupScreen(
         )
     }
 
+    if (showCloudResultDialog) {
+        CyberDialog(
+            show = true,
+            title = "SYSTEM MESSAGE",
+            confirmText = "",
+            onConfirm = {
+                showCloudResultDialog = false
+
+                if (pendingCloseAfterCloudSave) {
+                    editingRobot = null
+                    isAdding = false
+                    selectedTabOrStep = 0
+                    pendingCloseAfterCloudSave = false
+                }
+            },
+            onDismiss = {
+                showCloudResultDialog = false
+
+                if (pendingCloseAfterCloudSave) {
+                    editingRobot = null
+                    isAdding = false
+                    selectedTabOrStep = 0
+                    pendingCloseAfterCloudSave = false
+                }
+            }
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "- LOCAL SAVE SUCCESSFUL",
+                    color = HudBlue,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                )
+
+                Text(
+                    text = firestoreStatus,
+                    color = if (firestoreStatus.startsWith("CLOUD SYNC FAILED")) Color.Red else HudBlue,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                )
+            }
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -1019,14 +1133,15 @@ fun RobotSetupScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Spacer(modifier = Modifier.height(25.dp))
+                Spacer(modifier = Modifier.height(15.dp))
                 Image(
                     painter = painterResource(id = R.drawable.saved_robots),
                     contentDescription = "Logo",
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .fillMaxWidth(.80f)
                         .wrapContentHeight(),
                     contentScale = ContentScale.Fit
                 )
@@ -1040,7 +1155,6 @@ fun RobotSetupScreen(
                     Row(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-
                         IconButton(
                             onClick = { showHelp = true },
                             modifier = Modifier
@@ -1053,8 +1167,6 @@ fun RobotSetupScreen(
                                 contentDescription = "Help",
                                 tint = HudBlue
                             )
-
-                     
                         }
                     }
 
@@ -1108,8 +1220,8 @@ fun RobotSetupScreen(
                             },
                             onDelete = { robotToDelete = robot }
                         )
-
                     }
+
                     if (hasNoUserRobots) {
                         item {
                             Surface(
@@ -1151,8 +1263,6 @@ fun RobotSetupScreen(
                             }
                         }
                     }
-
-
                 }
 
                 CyberButton(
@@ -1174,6 +1284,12 @@ fun RobotSetupScreen(
             var name by remember(editingRobot) { mutableStateOf(initial.name) }
             var addr by remember(editingRobot) { mutableStateOf(initial.rosAddress) }
             var url by remember(editingRobot) { mutableStateOf(initial.videoUrl) }
+
+            var invertForwardBack by remember(editingRobot) { mutableStateOf(initial.invertForwardBack) }
+            var invertStrafe by remember(editingRobot) { mutableStateOf(initial.invertStrafe) }
+            var invertHeight by remember(editingRobot) { mutableStateOf(initial.invertHeight) }
+            var invertTurn by remember(editingRobot) { mutableStateOf(initial.invertTurn) }
+
             var selectedThumbnailUri by remember(editingRobot) {
                 mutableStateOf<Uri?>(
                     if (initial.thumbnailPath != null && initial.thumbnailPath != "demo_thumb") {
@@ -1264,16 +1380,17 @@ fun RobotSetupScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Spacer(modifier = Modifier.height(25.dp))
+                Spacer(modifier = Modifier.height(15.dp))
                 Image(
                     painter = painterResource(
                         id = if (isAdding) R.drawable.new_robot else R.drawable.saved_robots
                     ),
                     contentDescription = "Logo",
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .fillMaxWidth(.80f)
                         .wrapContentHeight(),
                     contentScale = ContentScale.Fit
                 )
@@ -1282,7 +1399,6 @@ fun RobotSetupScreen(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 1. HELP ICON (Left Aligned)
                     IconButton(
                         onClick = { showHelp = true },
                         modifier = Modifier
@@ -1299,7 +1415,6 @@ fun RobotSetupScreen(
                         )
                     }
 
-                    // 2. TAB ROW (Takes remaining space)
                     TabRow(
                         selectedTabIndex = selectedTabOrStep,
                         containerColor = Color.Transparent,
@@ -1333,13 +1448,12 @@ fun RobotSetupScreen(
                     }
                 }
 
-
                 Column(
                     modifier = Modifier
                         .weight(1f)
                         .verticalScroll(rememberScrollState())
                         .padding(top = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
                     when (selectedTabOrStep) {
                         0 -> {
@@ -1420,6 +1534,53 @@ fun RobotSetupScreen(
                                 onValueChange = { url = it },
                                 label = "VIDEO SERVER URL (OPTIONAL)"
                             )
+
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = "AXIS SETTINGS",
+                                color = HudBlue,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            AxisSwitchRowDual(
+                                left = {
+                                    AxisSwitchCompact(
+                                        title = "FORWARD",
+                                        checked = invertForwardBack,
+                                        onCheckedChange = { invertForwardBack = it }
+                                    )
+                                },
+                                right = {
+                                    AxisSwitchCompact(
+                                        title = "STRAFE",
+                                        checked = invertStrafe,
+                                        onCheckedChange = { invertStrafe = it }
+                                    )
+                                }
+                            )
+
+                            AxisSwitchRowDual(
+                                left = {
+                                    AxisSwitchCompact(
+                                        title = "HEIGHT",
+                                        checked = invertHeight,
+                                        onCheckedChange = { invertHeight = it }
+                                    )
+                                },
+                                right = {
+                                    AxisSwitchCompact(
+                                        title = "TURN",
+                                        checked = invertTurn,
+                                        onCheckedChange = { invertTurn = it }
+                                    )
+                                }
+                            )
                         }
 
                         1 -> {
@@ -1444,16 +1605,13 @@ fun RobotSetupScreen(
                                                 ros.discoverTopics { res ->
                                                     discovering = false
                                                     res.onSuccess { disc ->
-                                                        res.onSuccess { disc ->
-                                                            allDiscoveredTopics = disc.allTopics
-                                                            cmdVelTopic = disc.cmdVelTopic
-                                                            modeTopic = disc.modeTopic
-                                                            batteryTopic = disc.batteryTopic
-                                                            imuTopic = disc.imuTopic
-                                                            odomTopic = disc.odomTopic
-                                                            jointStateTopic = disc.jointStateTopic
-                                                            discoverStatus = "SYNC COMPLETE"
-                                                        }
+                                                        allDiscoveredTopics = disc.allTopics
+                                                        cmdVelTopic = disc.cmdVelTopic
+                                                        modeTopic = disc.modeTopic
+                                                        batteryTopic = disc.batteryTopic
+                                                        imuTopic = disc.imuTopic
+                                                        odomTopic = disc.odomTopic
+                                                        jointStateTopic = disc.jointStateTopic
                                                         discoverStatus = "SYNC COMPLETE"
                                                     }.onFailure {
                                                         discoverStatus = "SYNC FAILED"
@@ -1623,13 +1781,24 @@ fun RobotSetupScreen(
                                     modes = modes.toList(),
                                     enabledIndicators = initial.enabledIndicators,
                                     totalUptimeSeconds = initial.totalUptimeSeconds,
-                                    totalDistanceMeters = initial.totalDistanceMeters
+                                    totalDistanceMeters = initial.totalDistanceMeters,
+                                    invertForwardBack = invertForwardBack,
+                                    invertStrafe = invertStrafe,
+                                    invertHeight = invertHeight,
+                                    invertTurn = invertTurn
                                 )
 
                                 onSave(editingRobot?.name, newConfig)
-                                editingRobot = null
-                                isAdding = false
-                                selectedTabOrStep = 0
+
+                                firestoreStatus = "Saving robot to cloud..."
+                                pendingCloseAfterCloudSave = true
+
+                                saveRobotConfigToFirestore(newConfig) { result ->
+                                    firestoreStatus = result
+                                    showCloudResultDialog = true
+                                }
+
+
                             }
                         },
                         modifier = Modifier
@@ -1654,6 +1823,7 @@ fun RobotSetupScreen(
         }
     }
 }
+
 
 @Composable
 fun DiscoverTopicsButton(
@@ -2020,6 +2190,139 @@ fun HudTextField(value: String, onValueChange: (String) -> Unit, label: String) 
     )
 }
 
+@Composable
+fun AxisSwitchRowDual(
+    left: @Composable () -> Unit,
+    right: @Composable () -> Unit
+) {
+    Surface(
+        color = HudText.copy(alpha = 0.03f),
+        shape = RoundedCornerShape(10.dp),
+        border = BorderStroke(1.dp, HudText.copy(alpha = 0.4f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(46.dp)
+                .padding(horizontal = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(modifier = Modifier.weight(1f)) {
+                left()
+            }
+
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .fillMaxHeight()
+                    .background(HudText.copy(alpha = 0.1f))
+            )
+
+            Box(modifier = Modifier.weight(1f)) {
+                right()
+            }
+        }
+    }
+}
+
+@Composable
+fun AxisSwitchCompact(
+    title: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = title,
+                color = HudText,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                lineHeight = 11.sp
+            )
+
+            Text(
+                text = if (checked) "INVERTED" else "NORMAL",
+                color = if (checked) HudBlue else HudText.copy(alpha = 0.4f),
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                lineHeight = 9.sp
+            )
+        }
+
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = HudBlue,
+                checkedTrackColor = HudBlue.copy(alpha = 0.3f),
+                uncheckedThumbColor = Color.DarkGray,
+                uncheckedTrackColor = Color.Black.copy(alpha = 0.4f),
+                uncheckedBorderColor = HudText.copy(alpha = 0.2f),
+                checkedBorderColor = HudText.copy(alpha = 0.2f)
+            ),
+            modifier = Modifier.scale(0.6f)
+        )
+    }
+}
+
+@Composable
+fun AxisSwitchRow(
+    title: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(32.dp) // 👈 hard cap height (this is key)
+            .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = title,
+                color = HudText,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                lineHeight = 12.sp // 👈 tighter text
+            )
+
+            Text(
+                text = if (checked) "INVERTED" else "NORMAL",
+                color = if (checked) HudBlue else HudText.copy(alpha = 0.6f),
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Bold,
+                lineHeight = 9.sp
+            )
+        }
+
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = HudBlue,
+                checkedTrackColor = HudBlue.copy(alpha = 0.3f),
+                uncheckedThumbColor = Color.DarkGray,
+                uncheckedTrackColor = Color.Black.copy(alpha = 0.4f),
+                uncheckedBorderColor = Color.Transparent
+            ),
+            modifier = Modifier.scale(0.6f)
+        )
+    }
+}
 @Composable
 fun MainMenuPanel(content: @Composable ColumnScope.() -> Unit) {
     Box(
@@ -2435,7 +2738,7 @@ fun SettingsDialog(
 
     CyberDialog(
         show = true,
-        title = "SYSTEM CONFIG",
+        title = "CONTROLLER SETTINGS",
         confirmText = "APPLY ▶",
         onConfirm = { onSave(currentRobot, haptics) },
         onDismiss = onDismiss
@@ -2564,7 +2867,8 @@ fun IndicatorRockerRow(
                     checkedTrackColor = HudBlue.copy(alpha = 0.3f),
                     uncheckedThumbColor = Color.DarkGray,
                     uncheckedTrackColor = Color.Black.copy(alpha = 0.4f),
-                    uncheckedBorderColor = Color.Transparent
+                    uncheckedBorderColor = HudText.copy(alpha = 0.2f),
+                    checkedBorderColor = HudText.copy(alpha = 0.2f)
                 ),
                 modifier = Modifier.scale(0.6f)
             )
@@ -2604,27 +2908,28 @@ fun ModeEditDialog(
         }
     }
 }
-
-@Preview(name = "Robot Setup - List", showBackground = true, device = "spec:width=411dp,height=891dp")
+@Preview(showBackground = true, widthDp = 412, heightDp = 915, name = "Robot List")
 @Composable
-fun RobotSetupScreenPreview() {
-    val sampleRobots = listOf(
-        RobotConfig(
-            name = "ROSbot (Demo)",
-            rosAddress = "192.168.1.100",
-            videoUrl = "http://192.168.1.100:8080/stream?topic=/camera/image_raw",
-            thumbnailPath = "demo_thumb"
-        ),
-        RobotConfig(
-            name = "Unitree Go1",
-            rosAddress = "192.168.12.1",
-            videoUrl = "http://192.168.12.1:8080/stream"
-        )
-    )
+fun PreviewRobotSetupListScreen() {
     JaxGamepadTheme {
         RobotSetupScreen(
             ros = RosbridgeClient(),
-            savedRobots = sampleRobots,
+            savedRobots = listOf(
+                RobotConfig(
+                    name = "Jax",
+                    rosAddress = "192.168.1.154:9090",
+                    videoUrl = "http://192.168.1.154:8080/stream?topic=/image_raw",
+                    thumbnailPath = "demo_thumb",
+                    cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
+                    modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
+                    jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
+                    modes = listOf(
+                        RobotMode("STAND", "stand"),
+                        RobotMode("WALK", "walk"),
+                        RobotMode("SIT", "sit")
+                    )
+                )
+            ),
             onSave = { _, _ -> },
             onDelete = {},
             onBack = {}
@@ -2632,112 +2937,262 @@ fun RobotSetupScreenPreview() {
     }
 }
 
-@Preview(name = "Robot Setup - Add New", showBackground = true, device = "spec:width=411dp,height=891dp")
+@Preview(showBackground = true, widthDp = 412, heightDp = 915, name = "New Robot - Step 1")
 @Composable
-fun RobotSetupScreenAddPreview() {
+fun PreviewNewRobotStep1() {
     JaxGamepadTheme {
         RobotSetupScreen(
             ros = RosbridgeClient(),
-            savedRobots = emptyList(),
+            savedRobots = listOf(
+                RobotConfig(
+                    name = "ROSbot (Demo)",
+                    rosAddress = "192.168.1.XX:9090",
+                    videoUrl = "",
+                    thumbnailPath = "demo_thumb",
+                    cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
+                    modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
+                    jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
+                    modes = listOf(
+                        RobotMode("STAND", "stand"),
+                        RobotMode("WALK", "walk")
+                    )
+                )
+            ),
             onSave = { _, _ -> },
             onDelete = {},
             onBack = {},
+            initialEditingRobot = RobotConfig(
+                name = "",
+                rosAddress = "",
+                videoUrl = "",
+                thumbnailPath = null,
+                modes = emptyList()
+            ),
             initialIsAdding = true,
             initialSelectedTabOrStep = 0
         )
     }
 }
 
-@Preview(device = "spec:width=1280dp,height=800dp,orientation=landscape")
+@Preview(showBackground = true, widthDp = 412, heightDp = 915, name = "New Robot - Topics")
 @Composable
-fun SettingsDialogPreview() {
-    val sampleRobot = RobotConfig(
-        name = "ROSbot (Demo)",
-        rosAddress = "192.168.1.100",
-        videoUrl = "http://192.168.1.100:8080/stream?topic=/camera/image_raw",
-        thumbnailPath = "demo_thumb"
-    )
+fun PreviewNewRobotStep2Topics() {
     JaxGamepadTheme {
-        SettingsDialog(
-            savedRobots = listOf(sampleRobot),
-            currentRobot = sampleRobot,
-            initialHaptics = true,
-            activeIndicators = setOf(HudIndicator.ROS_LINK, HudIndicator.BATTERY, HudIndicator.CAMERA),
-            onToggleIndicator = {},
-            onDismiss = {},
+        RobotSetupScreen(
+            ros = RosbridgeClient(),
+            savedRobots = listOf(
+                RobotConfig(
+                    name = "ROSbot (Demo)",
+                    rosAddress = "192.168.1.XX:9090",
+                    videoUrl = "",
+                    thumbnailPath = "demo_thumb",
+                    cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
+                    modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
+                    jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
+                    modes = listOf(
+                        RobotMode("STAND", "stand"),
+                        RobotMode("WALK", "walk")
+                    )
+                )
+            ),
             onSave = { _, _ -> },
-            onDisconnect = {},
-            onBackToMenu = {}
+            onDelete = {},
+            onBack = {},
+            initialEditingRobot = RobotConfig(
+                name = "Jax",
+                rosAddress = "192.168.1.154:9090",
+                videoUrl = "http://192.168.1.154:8080/stream?topic=/image_raw",
+                thumbnailPath = null,
+                modes = emptyList()
+            ),
+            initialIsAdding = true,
+            initialSelectedTabOrStep = 1
         )
     }
 }
 
-@Preview(name = "New Mode Dialog", device = "spec:width=1280dp,height=800dp,orientation=landscape")
+@Preview(showBackground = true, widthDp = 412, heightDp = 915, name = "New Robot - Modes")
 @Composable
-fun NewModeDialogPreview() {
+fun PreviewNewRobotStep3Modes() {
     JaxGamepadTheme {
-        ModeEditDialog(
-            initialMode = null,
-            onDismiss = {},
-            onSave = {}
+        RobotSetupScreen(
+            ros = RosbridgeClient(),
+            savedRobots = listOf(
+                RobotConfig(
+                    name = "ROSbot (Demo)",
+                    rosAddress = "192.168.1.XX:9090",
+                    videoUrl = "",
+                    thumbnailPath = "demo_thumb",
+                    cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
+                    modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
+                    jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
+                    modes = listOf(
+                        RobotMode("STAND", "stand"),
+                        RobotMode("WALK", "walk")
+                    )
+                )
+            ),
+            onSave = { _, _ -> },
+            onDelete = {},
+            onBack = {},
+            initialEditingRobot = RobotConfig(
+                name = "Jax",
+                rosAddress = "192.168.1.154:9090",
+                videoUrl = "http://192.168.1.154:8080/stream?topic=/image_raw",
+                thumbnailPath = null,
+                modes = listOf(
+                    RobotMode("STAND", "stand"),
+                    RobotMode("WALK", "walk"),
+                    RobotMode("SIT", "sit")
+                )
+            ),
+            initialIsAdding = true,
+            initialSelectedTabOrStep = 2
         )
     }
 }
 
-@Preview(name = "Edit Mode Dialog", device = "spec:width=1280dp,height=800dp,orientation=landscape")
+@Preview(showBackground = true, widthDp = 412, heightDp = 915, name = "Edit Robot")
 @Composable
-fun EditModeDialogPreview() {
+fun PreviewEditRobotScreen() {
     JaxGamepadTheme {
-        ModeEditDialog(
-            initialMode = RobotMode("WALK", "walk"),
-            onDismiss = {},
-            onSave = {}
+        RobotSetupScreen(
+            ros = RosbridgeClient(),
+            savedRobots = listOf(
+                RobotConfig(
+                    name = "Jax",
+                    rosAddress = "192.168.1.154:9090",
+                    videoUrl = "http://192.168.1.154:8080/stream?topic=/image_raw",
+                    thumbnailPath = "demo_thumb",
+                    cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
+                    modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
+                    jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
+                    modes = listOf(
+                        RobotMode("STAND", "stand"),
+                        RobotMode("WALK", "walk"),
+                        RobotMode("SIT", "sit"),
+                        RobotMode("LAY", "lay")
+                    ),
+                    invertForwardBack = false,
+                    invertStrafe = true,
+                    invertHeight = false,
+                    invertTurn = true
+                )
+            ),
+            onSave = { _, _ -> },
+            onDelete = {},
+            onBack = {},
+            initialEditingRobot = RobotConfig(
+                name = "Jax",
+                rosAddress = "192.168.1.154:9090",
+                videoUrl = "http://192.168.1.154:8080/stream?topic=/image_raw",
+                thumbnailPath = "demo_thumb",
+                cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
+                modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
+                jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
+                modes = listOf(
+                    RobotMode("STAND", "stand"),
+                    RobotMode("WALK", "walk"),
+                    RobotMode("SIT", "sit"),
+                    RobotMode("LAY", "lay")
+                ),
+                invertForwardBack = false,
+                invertStrafe = true,
+                invertHeight = false,
+                invertTurn = true
+            ),
+            initialIsAdding = false,
+            initialSelectedTabOrStep = 0
         )
     }
 }
-
-@Preview(
-    name = "Main Menu - Terminal Booted",
-    showBackground = true,
-    device = "spec:width=411dp,height=891dp,orientation=portrait"
-)
+@Preview(showBackground = true, widthDp = 412, heightDp = 915)
 @Composable
-fun StartMenuScreenPreview() {
-    // Mocking the terminal text that usually generates in LaunchedEffect
-    val mockTerminalText = """> BOOTING_ROS_CONTROLLER...
-|> 
-|> LINK: WIFI_CONNECTED
-|> ADDR: 192.168.1.15
-|> 
-|> STATUS: SYSTEM_READY_"""
-
-    val sampleRobots = listOf(
-        RobotConfig(
-            name = "Jax-1",
-            rosAddress = "192.168.1.15",
-            videoUrl = "http://192.168.1.15:8080/stream",
-            thumbnailPath = "demo_thumb"
-        )
-    )
-
+fun PreviewStartMenuScreen() {
     JaxGamepadTheme {
         StartMenuScreen(
             ros = RosbridgeClient(),
-            savedRobots = sampleRobots,
-            terminalText = mockTerminalText,
+            savedRobots = listOf(
+                RobotConfig(
+                    name = "Jax",
+                    rosAddress = "192.168.1.154:9090",
+                    videoUrl = "http://192.168.1.154:8080/stream?topic=/image_raw",
+                    thumbnailPath = "demo_thumb",
+                    cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
+                    modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
+                    jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
+                    modes = listOf(
+                        RobotMode("STAND", "stand"),
+                        RobotMode("WALK", "walk"),
+                        RobotMode("SIT", "sit")
+                    )
+                )
+            ),
+            terminalText = "> BOOTING_ROS_CONTROLLER\\n|>\\n|> LINK: WIFI_CONNECTED\\n|> IP: 192.168.1.154\\n|> STATUS: SYSTEM_READY_",
             onLaunchGamepad = {},
             onLaunchSetup = {}
         )
     }
 }
 
-@Preview(name = "Help Dialog", device = "spec:width=1280dp,height=800dp,orientation=landscape")
+@Preview(showBackground = true, widthDp = 915, heightDp = 412)
 @Composable
-fun HelpDialogPreview() {
+fun PreviewJaxDriverScreen() {
     JaxGamepadTheme {
-        HelpDialog(
-            show = true,
-            onDismiss = {}
+        JaxDriverScreen(
+            ros = RosbridgeClient(),
+            currentRobot = RobotConfig(
+                name = "Jax",
+                rosAddress = "",
+                videoUrl = "",
+                thumbnailPath = "demo_thumb",
+                cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
+                modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
+                jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
+                modes = listOf(
+                    RobotMode("STAND", "stand"),
+                    RobotMode("WALK", "walk"),
+                    RobotMode("SIT", "sit"),
+                    RobotMode("LAY", "lay")
+                ),
+                enabledIndicators = listOf("LINK", "MOTORS", "IMU", "SAFE")
+            ),
+            savedRobots = emptyList(),
+            hapticsEnabled = true,
+            onRobotChange = {},
+            onHapticsChange = {},
+            reHideSystemBars = {},
+            onBackToMenu = {},
+            networkInfo = "WIFI_CONNECTED" to "192.168.1.154"
+        )
+    }
+}
+
+@Preview(showBackground = true, widthDp = 412, heightDp = 915)
+@Composable
+fun PreviewRobotSetupScreen() {
+    JaxGamepadTheme {
+        RobotSetupScreen(
+            ros = RosbridgeClient(),
+            savedRobots = listOf(
+                RobotConfig(
+                    name = "Jax",
+                    rosAddress = "192.168.1.154:9090",
+                    videoUrl = "http://192.168.1.154:8080/stream?topic=/image_raw",
+                    thumbnailPath = "demo_thumb",
+                    cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
+                    modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
+                    jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
+                    modes = listOf(
+                        RobotMode("STAND", "stand"),
+                        RobotMode("WALK", "walk"),
+                        RobotMode("SIT", "sit")
+                    )
+                )
+            ),
+            onSave = { _, _ -> },
+            onDelete = {},
+            onBack = {}
         )
     }
 }

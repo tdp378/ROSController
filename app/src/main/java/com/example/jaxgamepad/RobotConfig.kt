@@ -37,5 +37,12 @@ data class RobotConfig(
     val enabledIndicators: List<String> = HudIndicator.entries.map { it.name },
 
     val totalUptimeSeconds: Long = 0L,
-    val totalDistanceMeters: Double = 0.0
+    val totalDistanceMeters: Double = 0.0,
+
+    // AXIS SETTINGS
+    val invertForwardBack: Boolean = false,
+    val invertStrafe: Boolean = false,
+    val invertHeight: Boolean = false,
+    val invertTurn: Boolean = false
+
 )

@@ -42,6 +42,11 @@ class RobotManager(context: Context) {
                 // NEW
                 put("totalUptimeSeconds", robot.totalUptimeSeconds)
                 put("totalDistanceMeters", robot.totalDistanceMeters)
+
+                put("invertForwardBack", robot.invertForwardBack)
+                put("invertStrafe", robot.invertStrafe)
+                put("invertHeight", robot.invertHeight)
+                put("invertTurn", robot.invertTurn)
             }
 
             array.put(obj)
@@ -84,7 +89,11 @@ class RobotManager(context: Context) {
 
                         // NEW
                         totalUptimeSeconds = obj.optLong("totalUptimeSeconds", 0L),
-                        totalDistanceMeters = obj.optDouble("totalDistanceMeters", 0.0)
+                        totalDistanceMeters = obj.optDouble("totalDistanceMeters", 0.0),
+                        invertForwardBack = obj.optBoolean("invertForwardBack", false),
+                        invertStrafe = obj.optBoolean("invertStrafe", false),
+                        invertHeight = obj.optBoolean("invertHeight", false),
+                        invertTurn = obj.optBoolean("invertTurn", false)
                     )
                 )
             }
