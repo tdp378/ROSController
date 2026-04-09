@@ -24,14 +24,21 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -55,6 +62,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -586,3 +594,123 @@ fun AccountStatusDialog(
     }
 }
 
+@Composable
+fun RobotSelectionDialog(
+    savedRobots: List<RobotConfig>,
+    onDismiss: () -> Unit,
+    onSelect: (RobotConfig) -> Unit
+) {
+    var selected by remember {
+        val firstReal = savedRobots.firstOrNull { !it.name.contains("ROSbot", ignoreCase = true) }
+        mutableStateOf(firstReal ?: savedRobots.firstOrNull())
+    }
+
+    CyberDialog(
+        show = true,
+        title = "Robot Selection",
+        confirmText = "LAUNCH ▶",
+        onConfirm = { selected?.let { onSelect(it) } },
+        onDismiss = onDismiss
+    ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 280.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(savedRobots) { robot ->
+                val isSelected = selected?.name == robot.name
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (isSelected) MyColors.HudBlue.copy(alpha = 0.1f) else Color.Transparent)
+                        .border(
+                            width = 1.dp,
+                            color = if (isSelected) MyColors.HudBlue else MyColors.HudBorder.copy(alpha = 0.3f),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .clickable { selected = robot }
+                        .padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = isSelected,
+                        onClick = { selected = robot },
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = MyColors.HudBlue,
+                            unselectedColor = MyColors.HudText.copy(alpha = 0.3f)
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = robot.name,
+                            color = if (isSelected) MyColors.HudBlue else MyColors.HudText,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+        }
+
+        if (selected?.name?.contains("ROSbot", ignoreCase = true) == true) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Surface(
+                color = MyColors.HudBlue.copy(alpha = 0.05f),
+                shape = RoundedCornerShape(8.dp),
+                border = BorderStroke(1.dp, MyColors.HudBlue.copy(alpha = 0.2f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = MyColors.HudBlue,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "NOTE: This is a demo profile to test the UI. Real-time hardware telemetry and video streaming will not be available until a live ROS bridge is configured.",
+                        color = MyColors.HudText.copy(alpha = 0.7f),
+                        fontSize = 10.sp,
+                        lineHeight = 14.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
+fun MyColors.HudTextField(value: String, onValueChange: (String) -> Unit, label: String) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label, fontSize = 11.sp) },
+        placeholder = {
+            Text(
+                text = "Enter ${label.lowercase()}...",
+                color = MyColors.HudText.copy(alpha = 0.3f)
+            )
+        },
+        textStyle = TextStyle(color = MyColors.HudText, fontSize = 14.sp),
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        minLines = 1,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = MyColors.HudBlue,
+            unfocusedBorderColor = MyColors.HudText.copy(alpha = 0.4f),
+            focusedTextColor = MyColors.HudText,
+            unfocusedTextColor = MyColors.HudText,
+            unfocusedLabelColor = MyColors.HudBlue,
+            focusedLabelColor = MyColors.HudBlue,
+            disabledLabelColor = MyColors.HudBlue
+        ),
+        shape = RoundedCornerShape(8.dp)
+    )
+}

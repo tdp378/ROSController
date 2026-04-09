@@ -4,7 +4,8 @@ import android.util.Log
 import com.example.jaxgamepad.ui.screens.HudIndicator
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-
+import com.example.jaxgamepad.RobotConfig
+import com.example.jaxgamepad.RobotManager  
 fun saveRobotConfigToFirestore(
     robot: RobotConfig,
     onResult: (String) -> Unit = {}
@@ -185,4 +186,46 @@ fun fetchRobotsFromFirestoreForSignedInUser(
         .addOnFailureListener { e ->
             onFailure(e)
         }
+}
+
+fun buildDemoRobot(ownerUid: String = RobotManager.GUEST_OWNER_UID): RobotConfig {
+    return RobotConfig(
+        name = "ROSbot (Demo)",
+        rosAddress = "192.168.1.XX",
+        videoUrl = "http://192.168.1.XX:8080/stream?topic=/camera/image_raw",
+        thumbnailPath = "demo_thumb",
+        cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
+        modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
+        jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
+        modes = listOf(
+            RobotMode("STAND", "stand"),
+            RobotMode("WALK", "walk"),
+            RobotMode("LAY", "lay"),
+            RobotMode("SHAKE", "shake"),
+            RobotMode("SIT", "sit"),
+            RobotMode("WAVE", "wave"),
+        ),
+        invertForwardBack = false,
+        invertStrafe = true,
+        invertHeight = false,
+        invertTurn = true,
+        ownerUid = ownerUid
+    )
+}
+
+fun loadRobotsForOwner(robotManager: RobotManager, ownerUid: String?): List<RobotConfig> {
+    val normalizedOwner = RobotManager.normalizeOwnerUid(ownerUid)
+    val loaded = robotManager.loadRobots(normalizedOwner)
+    val needsDemo = loaded.isEmpty() || loaded.any { it.name.lowercase() == "jax-1" }
+
+    if (!needsDemo) {
+        return loaded
+    }
+
+    val demo = buildDemoRobot(normalizedOwner)
+    val cleaned = loaded.filterNot { it.name.lowercase() == "jax-1" }
+    val withDemo = if (cleaned.any { it.isDemoRobot() }) cleaned else listOf(demo) + cleaned
+
+    robotManager.saveRobots(withDemo, normalizedOwner)
+    return withDemo
 }

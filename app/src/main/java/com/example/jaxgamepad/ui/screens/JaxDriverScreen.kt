@@ -1,16 +1,23 @@
 package com.example.jaxgamepad.ui.screens
 
 import android.annotation.SuppressLint
+import android.view.ViewGroup.LayoutParams.MATCH_PARENT
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -44,13 +51,14 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.example.jaxgamepad.CyberButton
 import com.example.jaxgamepad.CyberDialog
-import com.example.jaxgamepad.MjpegWebView
+import com.example.jaxgamepad.IndicatorRockerRow
 import com.example.jaxgamepad.R
 import com.example.jaxgamepad.RobotConfig
 import com.example.jaxgamepad.RosbridgeClient
-import com.example.jaxgamepad.SettingsDialog
+import com.example.jaxgamepad.SettingsRockerRow
 import com.example.jaxgamepad.formatUptime
 import com.example.jaxgamepad.ui.theme.MyColors
 import kotlinx.coroutines.Job
@@ -463,4 +471,108 @@ fun HatchOverlay(
             )
         }
     }
+}
+
+@Composable
+fun SettingsDialog(
+    savedRobots: List<RobotConfig>,
+    currentRobot: RobotConfig,
+    initialHaptics: Boolean,
+    activeIndicators: Set<HudIndicator>,
+    onToggleIndicator: (HudIndicator) -> Unit,
+    onDismiss: () -> Unit,
+    onSave: (RobotConfig, Boolean) -> Unit,
+    onDisconnect: () -> Unit,
+    onBackToMenu: () -> Unit
+) {
+    var haptics by remember { mutableStateOf(initialHaptics) }
+
+    CyberDialog(
+        show = true,
+        title = "CONTROLLER SETTINGS",
+        confirmText = "APPLY ▶",
+        onConfirm = { onSave(currentRobot, haptics) },
+        onDismiss = onDismiss
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            SettingsRockerRow(
+                label = "ENABLE HAPTIC FEEDBACK",
+                checked = haptics,
+                onToggle = { haptics = it }
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    val leds = listOf(HudIndicator.ROS_LINK, HudIndicator.MOTORS, HudIndicator.IMU, HudIndicator.CAMERA)
+                    leds.forEach { indicator ->
+                        IndicatorRockerRow(indicator, activeIndicators, onToggleIndicator)
+                    }
+                }
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    val telemetry = listOf(HudIndicator.BATTERY, HudIndicator.CPU)
+                    telemetry.forEach { indicator ->
+                        IndicatorRockerRow(indicator, activeIndicators, onToggleIndicator)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+fun MjpegWebView(
+    url: String,
+    onLoadingStateChanged: (loaded: Boolean, error: String?) -> Unit,
+    onUserInteraction: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    AndroidView(
+        factory = { context ->
+            WebView(context).apply {
+                layoutParams = android.view.ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+                setBackgroundColor(android.graphics.Color.BLACK)
+                webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        onLoadingStateChanged(true, null)
+                    }
+
+                    override fun onReceivedError(
+                        view: WebView?,
+                        request: WebResourceRequest?,
+                        error: WebResourceError?
+                    ) {
+                        if (request?.isForMainFrame == true) {
+                            onLoadingStateChanged(false, error?.description?.toString())
+                            view?.visibility = android.view.View.INVISIBLE
+                        }
+                    }
+                }
+                settings.javaScriptEnabled = true
+                setOnTouchListener { _, _ ->
+                    onUserInteraction()
+                    false
+                }
+                loadUrl(url)
+            }
+        },
+        update = {
+            it.visibility = android.view.View.VISIBLE
+            it.loadUrl(url)
+        },
+        modifier = modifier
+    )
 }
