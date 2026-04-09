@@ -30,7 +30,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
@@ -79,7 +78,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import com.google.firebase.firestore.FirebaseFirestore
 import android.util.Log
-import com.example.jaxgamepad.ProfileScreen
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Help
+import androidx.compose.material.icons.automirrored.filled.Login
 import com.google.firebase.auth.FirebaseAuth
 
 
@@ -103,6 +104,10 @@ fun saveRobotConfigToFirestore(
     robot: RobotConfig,
     onResult: (String) -> Unit = {}
 ) {
+    if (robot.isDemoRobot()) {
+        onResult("DEMO MODE - CLOUD SYNC DISABLED")
+        return
+    }
     val uid = FirebaseAuth.getInstance().currentUser?.uid
     if (uid.isNullOrBlank()) {
         onResult("SAVED LOCALLY - SIGN IN TO SYNC")
@@ -279,6 +284,168 @@ private fun fetchRobotsFromFirestoreForSignedInUser(
 }
 
 @Composable
+fun AccountStatusDialog(
+    show: Boolean,
+    user: com.google.firebase.auth.FirebaseUser?,
+    onDismiss: () -> Unit,
+    onGoogleLogin: () -> Unit,
+    onSignOut: () -> Unit
+) {
+    if (!show) return
+
+    var showLoginForm by remember { mutableStateOf(false) }
+    var isLoginMode by remember { mutableStateOf(true) }
+    var submitTrigger by remember { mutableStateOf(0) }
+    var isLoading by remember { mutableStateOf(false) }
+    
+    val isSignedIn = user != null
+    val title = if (showLoginForm) "SYSTEM_AUTHENTICATION" else if (isSignedIn) "AUTH_SUCCESSFUL" else "GUEST_ACCESS"
+
+    val confirmText = if (showLoginForm && !isSignedIn) {
+        if (isLoading) "PROCESSING..." else if (isLoginMode) "LOGIN ▶" else "CREATE ▶"
+    } else ""
+
+    CyberDialog(
+        show = show,
+        title = title,
+        confirmText = confirmText,
+        onConfirm = {
+            if (showLoginForm && !isSignedIn && !isLoading) {
+                submitTrigger++
+            }
+        },
+        onDismiss = {
+            showLoginForm = false
+            onDismiss()
+        }
+    ) {
+        if (showLoginForm && !isSignedIn) {
+            ProfileContent(
+                onBack = { showLoginForm = false },
+                isLoginMode = isLoginMode,
+                onModeChange = { isLoginMode = it },
+                submitTrigger = submitTrigger,
+                onLoadingChange = { isLoading = it },
+                onProfileCreated = {
+                    showLoginForm = false
+                }
+            )
+        } else {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // User Info Section
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.AccountCircle,
+                        contentDescription = null,
+                        tint = HudBlue,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = if (isSignedIn) "IDENTIFIED: ${user?.email}" else "STATUS: UNREGISTERED",
+                        color = HudText,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    if (!isSignedIn) {
+                        Text(
+                            text = "Cloud synchronization disabled.",
+                            color = HudText.copy(alpha = 0.5f),
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = HudBlue.copy(alpha = 0.2f), thickness = 1.dp)
+
+                if (!isSignedIn) {
+                    // Button to show the Login/Register form inside the dialog
+                    CyberButton(
+                        onClick = {
+                            showLoginForm = true
+                        },
+                        modifier = Modifier.fillMaxWidth().height(48.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .border(1.dp, HudBlue.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                                .background(HudBlue.copy(alpha = 0.1f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "LOGIN / REGISTER",
+                                color = HudBlue,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                letterSpacing = 1.sp
+                            )
+                        }
+                    }
+
+                    // "OR" separator
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        HorizontalDivider(modifier = Modifier.weight(1f), color = HudBlue.copy(alpha = 0.2f))
+                        Text(
+                            text = " OR ",
+                            color = HudText.copy(alpha = 0.4f),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 12.dp)
+                        )
+                        HorizontalDivider(modifier = Modifier.weight(1f), color = HudBlue.copy(alpha = 0.2f))
+                    }
+
+                    // Google Login Icon (Clickable Image)
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.05f))
+                            .border(0.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                            .clickable { onGoogleLogin() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.android_dark),
+                            contentDescription = "Continue with Google",
+                            modifier = Modifier.size(48.dp)
+                        )
+                    }
+                } else {
+                    // Logout Button
+                    CyberButton(
+                        onClick = {
+                            onSignOut()
+                            onDismiss()
+                        },
+                        modifier = Modifier.fillMaxWidth().height(45.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .border(1.dp, Color.Red.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                                .background(Color.Red.copy(alpha = 0.05f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("TERMINATE SESSION (LOGOUT)", color = Color.Red, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun CyberTerminalBox(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
@@ -445,7 +612,7 @@ fun CyberDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 560.dp)
+                    .heightIn(max = 700.dp)
             ) {
                 Text(
                     text = title,
@@ -561,7 +728,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-enum class Screen { Menu, Gamepad, RobotSetup, Account }
+enum class Screen { Menu, Gamepad, RobotSetup }
 
 
 @Composable
@@ -592,7 +759,7 @@ fun GlobalTopBar(onOpenAccount: () -> Unit, onOpenHelp: () -> Unit) {
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Default.Help,
+                    imageVector = Icons.AutoMirrored.Filled.Help,
                     contentDescription = "Help",
                     tint = HudBlue,
                     modifier = Modifier.size(20.dp)
@@ -626,13 +793,12 @@ fun GlobalTopBar(onOpenAccount: () -> Unit, onOpenHelp: () -> Unit) {
 fun AppNavigation(reHideSystemBars: () -> Unit) {
     val context = LocalContext.current
     val robotManager = remember { RobotManager(context) }
-
     var signedInUser by remember { mutableStateOf(FirebaseAuth.getInstance().currentUser) }
-
     var terminalText by remember { mutableStateOf("") }
     var hasBooted by remember { mutableStateOf(false) }
-
     val networkInfo by produceState(initialValue = "SCANNING" to "0.0.0.0") {
+
+
         while (true) {
             value = getNetworkDetails(context)
             delay(5000)
@@ -769,7 +935,7 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
     val ros = remember { RosbridgeClient() }
     val activity = LocalContext.current as? ComponentActivity
 
-    val portraitScreens = setOf(Screen.Menu, Screen.RobotSetup, Screen.Account)
+    val portraitScreens = setOf(Screen.Menu, Screen.RobotSetup)
 
     LaunchedEffect(currentScreen) {
         activity?.let {
@@ -844,7 +1010,7 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
             },
             onFailure = {
                 val merged = robotManager.mergeGuestRobotsIntoOwner(ownerUid)
-                val withDemo = if (merged.isEmpty()) loadRobotsForOwner(ownerUid) else merged
+                val withDemo = merged.ifEmpty { loadRobotsForOwner(ownerUid) }
                 syncRobotsToFirestoreForSignedInUser(withDemo)
                 savedRobots = withDemo
                 currentRobot = withDemo.firstOrNull { it.robotId == currentRobot.robotId }
@@ -855,16 +1021,40 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
     }
 
     var showGlobalHelp by remember { mutableStateOf(false) }
+    var showAccountDialog by remember { mutableStateOf(false) }
+
+    val googleAuthManager = remember { GoogleAuthManager(context) }
+    val scope = rememberCoroutineScope()
 
     if (showGlobalHelp) {
         HelpDialog(show = true, onDismiss = { showGlobalHelp = false })
     }
 
+    AccountStatusDialog(
+        show = showAccountDialog,
+        user = signedInUser,
+        onDismiss = { showAccountDialog = false },
+        onGoogleLogin = {
+            scope.launch {
+                val result = googleAuthManager.signInWithGoogle()
+                result.onSuccess {
+                    showAccountDialog = false
+                }.onFailure { e ->
+                    Log.e("GOOGLE_AUTH", "Sign in failed", e)
+                }
+            }
+        },
+        onSignOut = {
+            FirebaseAuth.getInstance().signOut()
+            showAccountDialog = false
+        }
+    )
+
     Column(modifier = Modifier.fillMaxSize()) {
         if (currentScreen != Screen.Gamepad) {
             GlobalTopBar(
                 onOpenAccount = {
-                    currentScreen = Screen.Account
+                    showAccountDialog = true
                 },
                 onOpenHelp = {
                     showGlobalHelp = true
@@ -886,13 +1076,7 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
                     },
                     onLaunchSetup = { currentScreen = Screen.RobotSetup },
                     onOpenAccount = {
-                        currentScreen = Screen.Account
-                    }
-                )
-
-                Screen.Account -> AccountScreen(
-                    onBack = {
-                        currentScreen = Screen.Menu
+                        showAccountDialog = true
                     }
                 )
 
@@ -954,7 +1138,7 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
                     },
                     onBack = { currentScreen = Screen.Menu },
                     onOpenAccount = {
-                        currentScreen = Screen.Account
+                        showAccountDialog = true
                     }
                 )
             }
@@ -1506,7 +1690,7 @@ fun RobotSetupScreen(
                                         )
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(
-                                            text = "We have provided a sample robot (ROSbot) to test the UI. Configure your own hardware profile to enable real-time telemetry and motion control.",
+                                            text = "ROSbot is provided as a sample robot for you to test the UI. Configure your own robot to enable real-time telemetry and motion control.",
                                             color = HudText.copy(alpha = 0.8f),
                                             fontSize = 12.sp,
                                             lineHeight = 16.sp
