@@ -1,6 +1,7 @@
 package com.example.jaxgamepad
 
 import com.example.jaxgamepad.ui.HudIndicator
+import java.util.UUID
 
 data class TopicBinding(
     val name: String,
@@ -17,7 +18,6 @@ data class RobotConfig(
     val rosAddress: String,
     val videoUrl: String,
     val thumbnailPath: String? = null,
-    val ownerUid: String? = null,
 
     val cmdVelTopic: TopicBinding? = null,
     val modeTopic: TopicBinding? = null,
@@ -44,6 +44,9 @@ data class RobotConfig(
     val invertForwardBack: Boolean = false,
     val invertStrafe: Boolean = false,
     val invertHeight: Boolean = false,
-    val invertTurn: Boolean = false
+    val invertTurn: Boolean = false,
 
+    // STABLE IDENTIFIERS / OWNERSHIP
+    val robotId: String = UUID.randomUUID().toString(),
+    val ownerUid: String = RobotManager.GUEST_OWNER_UID
 )

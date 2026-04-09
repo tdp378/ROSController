@@ -3,25 +3,26 @@ package com.example.jaxgamepad
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.UUID
 
 class RobotManager(context: Context) {
     private val prefs = context.getSharedPreferences("robot_prefs", Context.MODE_PRIVATE)
 
-    private fun robotsKey(userUid: String?): String {
-        val profileKey = userUid?.takeIf { it.isNotBlank() } ?: "__guest__"
-        return "saved_robots_$profileKey"
-    }
-
-    fun saveRobotsForUser(userUid: String?, robots: List<RobotConfig>) {
+    fun saveRobots(
+        robots: List<RobotConfig>,
+        ownerUid: String = GUEST_OWNER_UID
+    ) {
+        val normalizedOwner = normalizeOwnerUid(ownerUid)
         val array = JSONArray()
 
-        robots.forEach { robot ->
+        robots.forEach { originalRobot ->
+            val robot = originalRobot.withOwner(normalizedOwner)
+
             val obj = JSONObject().apply {
                 put("name", robot.name)
                 put("rosAddress", robot.rosAddress)
                 put("videoUrl", robot.videoUrl)
                 put("thumbnailPath", robot.thumbnailPath)
-                put("ownerUid", robot.ownerUid ?: userUid)
 
                 put("cmdVelTopic", robot.cmdVelTopic?.toJson())
                 put("modeTopic", robot.modeTopic?.toJson())
@@ -52,20 +53,27 @@ class RobotManager(context: Context) {
                 put("invertStrafe", robot.invertStrafe)
                 put("invertHeight", robot.invertHeight)
                 put("invertTurn", robot.invertTurn)
+
+                put("robotId", robot.robotId)
+                put("ownerUid", robot.ownerUid)
             }
 
             array.put(obj)
         }
 
-        prefs.edit().putString(robotsKey(userUid), array.toString()).apply()
+        prefs.edit().putString(storageKeyForOwner(normalizedOwner), array.toString()).apply()
     }
 
-    fun loadRobotsForUser(userUid: String?): List<RobotConfig> {
-        val primaryKey = robotsKey(userUid)
-        val jsonString = prefs.getString(
-            primaryKey,
-            if (userUid == null) prefs.getString("saved_robots", null) else null
-        )
+    fun loadRobots(ownerUid: String = GUEST_OWNER_UID): List<RobotConfig> {
+        val normalizedOwner = normalizeOwnerUid(ownerUid)
+        val jsonString = when {
+            prefs.contains(storageKeyForOwner(normalizedOwner)) ->
+                prefs.getString(storageKeyForOwner(normalizedOwner), null)
+            normalizedOwner == GUEST_OWNER_UID ->
+                prefs.getString(LEGACY_STORAGE_KEY, null)
+            else -> null
+        }
+
         if (jsonString.isNullOrBlank()) return emptyList()
 
         val robots = mutableListOf<RobotConfig>()
@@ -87,7 +95,6 @@ class RobotManager(context: Context) {
                         rosAddress = obj.optString("rosAddress", ""),
                         videoUrl = obj.optString("videoUrl", ""),
                         thumbnailPath = if (obj.isNull("thumbnailPath")) null else obj.optString("thumbnailPath", null),
-                        ownerUid = if (obj.isNull("ownerUid")) userUid else obj.optString("ownerUid", userUid),
                         cmdVelTopic = obj.optJSONObject("cmdVelTopic")?.toTopicBinding(),
                         modeTopic = obj.optJSONObject("modeTopic")?.toTopicBinding(),
                         batteryTopic = obj.optJSONObject("batteryTopic")?.toTopicBinding(),
@@ -101,8 +108,10 @@ class RobotManager(context: Context) {
                         invertForwardBack = obj.optBoolean("invertForwardBack", false),
                         invertStrafe = obj.optBoolean("invertStrafe", false),
                         invertHeight = obj.optBoolean("invertHeight", false),
-                        invertTurn = obj.optBoolean("invertTurn", false)
-                    )
+                        invertTurn = obj.optBoolean("invertTurn", false),
+                        robotId = obj.optString("robotId").takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString(),
+                        ownerUid = obj.optString("ownerUid").takeIf { it.isNotBlank() } ?: normalizedOwner
+                    ).withOwner(normalizedOwner)
                 )
             }
         } catch (e: Exception) {
@@ -111,13 +120,73 @@ class RobotManager(context: Context) {
         return robots
     }
 
-    fun saveRobots(robots: List<RobotConfig>) = saveRobotsForUser(null, robots)
+    fun mergeGuestRobotsIntoOwner(ownerUid: String): List<RobotConfig> {
+        val normalizedOwner = normalizeOwnerUid(ownerUid)
+        if (normalizedOwner == GUEST_OWNER_UID) return loadRobots(GUEST_OWNER_UID)
 
-    fun loadRobots(): List<RobotConfig> = loadRobotsForUser(null)
+        val guestRobots = loadRobots(GUEST_OWNER_UID)
+            .filterNot { it.isDemoRobot() }
+
+        if (guestRobots.isEmpty()) {
+            return loadRobots(normalizedOwner)
+        }
+
+        val existingUserRobots = loadRobots(normalizedOwner)
+        val mergedById = linkedMapOf<String, RobotConfig>()
+
+        existingUserRobots.forEach { robot ->
+            mergedById[robot.robotId] = robot.withOwner(normalizedOwner)
+        }
+
+        guestRobots.forEach { robot ->
+            val ownerRobot = robot.withOwner(normalizedOwner)
+            val duplicateByNameId = existingUserRobots.firstOrNull {
+                it.name.equals(ownerRobot.name, ignoreCase = true)
+            }?.robotId
+
+            val key = duplicateByNameId ?: ownerRobot.robotId
+            mergedById[key] = ownerRobot.copy(robotId = key, ownerUid = normalizedOwner)
+        }
+
+        val merged = mergedById.values.toList()
+        saveRobots(merged, normalizedOwner)
+        clearOwner(GUEST_OWNER_UID)
+        return merged
+    }
+
+    fun clearOwner(ownerUid: String) {
+        val normalizedOwner = normalizeOwnerUid(ownerUid)
+        val editor = prefs.edit().remove(storageKeyForOwner(normalizedOwner))
+        if (normalizedOwner == GUEST_OWNER_UID) {
+            editor.remove(LEGACY_STORAGE_KEY)
+        }
+        editor.apply()
+    }
 
     fun clearAll() {
         prefs.edit().clear().apply()
     }
+
+    companion object {
+        const val GUEST_OWNER_UID = "guest"
+        private const val LEGACY_STORAGE_KEY = "saved_robots"
+
+        fun normalizeOwnerUid(ownerUid: String?): String {
+            return ownerUid?.takeIf { it.isNotBlank() } ?: GUEST_OWNER_UID
+        }
+
+        fun storageKeyForOwner(ownerUid: String?): String {
+            return "saved_robots_${normalizeOwnerUid(ownerUid)}"
+        }
+    }
+}
+
+fun RobotConfig.withOwner(ownerUid: String): RobotConfig {
+    return copy(ownerUid = RobotManager.normalizeOwnerUid(ownerUid))
+}
+
+fun RobotConfig.isDemoRobot(): Boolean {
+    return name.equals("ROSbot (Demo)", ignoreCase = true) || thumbnailPath == "demo_thumb"
 }
 
 private fun TopicBinding.toJson(): JSONObject {

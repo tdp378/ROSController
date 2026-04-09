@@ -101,24 +101,24 @@ val TerminalCyan = Color(0xFF8FE9FF)
 
 fun saveRobotConfigToFirestore(
     robot: RobotConfig,
-    ownerUid: String?,
     onResult: (String) -> Unit = {}
 ) {
+    val uid = FirebaseAuth.getInstance().currentUser?.uid
+    if (uid.isNullOrBlank()) {
+        onResult("SAVED LOCALLY - SIGN IN TO SYNC")
+        return
+    }
+
     try {
         val db = FirebaseFirestore.getInstance()
-        val resolvedOwnerUid = ownerUid ?: FirebaseAuth.getInstance().currentUser?.uid
-
-        if (resolvedOwnerUid.isNullOrBlank()) {
-            onResult("CLOUD SYNC SKIPPED\nSIGN IN REQUIRED")
-            return
-        }
 
         val data = hashMapOf(
+            "robotId" to robot.robotId,
+            "ownerUid" to uid,
             "name" to robot.name,
             "rosAddress" to robot.rosAddress,
             "videoUrl" to robot.videoUrl,
             "thumbnailPath" to robot.thumbnailPath,
-            "ownerUid" to resolvedOwnerUid,
             "invertForwardBack" to robot.invertForwardBack,
             "invertStrafe" to robot.invertStrafe,
             "invertHeight" to robot.invertHeight,
@@ -127,25 +127,18 @@ fun saveRobotConfigToFirestore(
             "totalUptimeSeconds" to robot.totalUptimeSeconds,
             "totalDistanceMeters" to robot.totalDistanceMeters,
             "updatedAt" to System.currentTimeMillis(),
-
             "cmdVelTopic_name" to robot.cmdVelTopic?.name,
             "cmdVelTopic_type" to robot.cmdVelTopic?.type,
-
             "modeTopic_name" to robot.modeTopic?.name,
             "modeTopic_type" to robot.modeTopic?.type,
-
             "batteryTopic_name" to robot.batteryTopic?.name,
             "batteryTopic_type" to robot.batteryTopic?.type,
-
             "imuTopic_name" to robot.imuTopic?.name,
             "imuTopic_type" to robot.imuTopic?.type,
-
             "odomTopic_name" to robot.odomTopic?.name,
             "odomTopic_type" to robot.odomTopic?.type,
-
             "jointStateTopic_name" to robot.jointStateTopic?.name,
             "jointStateTopic_type" to robot.jointStateTopic?.type,
-
             "modes" to robot.modes.map {
                 hashMapOf(
                     "label" to it.label,
@@ -155,12 +148,12 @@ fun saveRobotConfigToFirestore(
         )
 
         db.collection("users")
-            .document(resolvedOwnerUid)
+            .document(uid)
             .collection("robots")
-            .document(robot.name)
+            .document(robot.robotId)
             .set(data)
             .addOnSuccessListener {
-                Log.d("FIRESTORE_ROBOT", "Saved robot: ${robot.name}")
+                Log.d("FIRESTORE_ROBOT", "Saved robot: ${robot.name} (${robot.robotId})")
                 onResult("- CLOUD SYNC SUCCESSFUL")
             }
             .addOnFailureListener { e ->
@@ -171,6 +164,118 @@ fun saveRobotConfigToFirestore(
         Log.e("FIRESTORE_ROBOT", "Exception saving robot", e)
         onResult("CLOUD SYNC FAILED\n${e.message ?: "Unknown error"}")
     }
+}
+
+fun deleteRobotConfigFromFirestore(
+    robot: RobotConfig,
+    onResult: (String) -> Unit = {}
+) {
+    val uid = FirebaseAuth.getInstance().currentUser?.uid
+    if (uid.isNullOrBlank()) {
+        onResult("REMOVED LOCALLY")
+        return
+    }
+
+    try {
+        FirebaseFirestore.getInstance()
+            .collection("users")
+            .document(uid)
+            .collection("robots")
+            .document(robot.robotId)
+            .delete()
+            .addOnSuccessListener {
+                Log.d("FIRESTORE_ROBOT", "Deleted robot: ${robot.name} (${robot.robotId})")
+                onResult("REMOVED LOCAL + CLOUD")
+            }
+            .addOnFailureListener { e ->
+                Log.e("FIRESTORE_ROBOT", "Failed deleting robot", e)
+                onResult("REMOVED LOCAL - CLOUD DELETE FAILED\n${e.message ?: "Unknown error"}")
+            }
+    } catch (e: Exception) {
+        Log.e("FIRESTORE_ROBOT", "Exception deleting robot", e)
+        onResult("REMOVED LOCAL - CLOUD DELETE FAILED\n${e.message ?: "Unknown error"}")
+    }
+}
+
+private fun syncRobotsToFirestoreForSignedInUser(robots: List<RobotConfig>) {
+    if (robots.isEmpty()) return
+    val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
+    robots.filterNot { it.isDemoRobot() }.forEach { robot ->
+        saveRobotConfigToFirestore(robot.copy(ownerUid = uid))
+    }
+}
+
+private fun fetchRobotsFromFirestoreForSignedInUser(
+    uid: String,
+    onResult: (List<RobotConfig>) -> Unit,
+    onFailure: (Exception) -> Unit = {}
+) {
+    FirebaseFirestore.getInstance()
+        .collection("users")
+        .document(uid)
+        .collection("robots")
+        .get()
+        .addOnSuccessListener { snapshot ->
+            try {
+                val robots = snapshot.documents.mapNotNull { doc ->
+                    val robotId = doc.getString("robotId")?.takeIf { it.isNotBlank() } ?: doc.id
+                    val name = doc.getString("name")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+
+                    val modes = (doc.get("modes") as? List<*>)
+                        ?.mapNotNull { modeEntry ->
+                            val modeMap = modeEntry as? Map<*, *> ?: return@mapNotNull null
+                            val label = modeMap["label"] as? String ?: return@mapNotNull null
+                            val command = modeMap["command"] as? String ?: return@mapNotNull null
+                            if (label.isBlank() || command.isBlank()) null else RobotMode(label, command)
+                        }
+                        ?: emptyList()
+
+                    val enabledIndicators = (doc.get("enabledIndicators") as? List<*>)
+                        ?.mapNotNull { it as? String }
+                        ?.takeIf { it.isNotEmpty() }
+                        ?: HudIndicator.entries.map { it.name }
+
+                    fun topicBinding(prefix: String): TopicBinding? {
+                        val topicName = doc.getString("${prefix}_name")?.trim().orEmpty()
+                        val topicType = doc.getString("${prefix}_type")?.trim().orEmpty()
+                        return if (topicName.isNotBlank() && topicType.isNotBlank()) {
+                            TopicBinding(name = topicName, type = topicType)
+                        } else {
+                            null
+                        }
+                    }
+
+                    RobotConfig(
+                        name = name,
+                        rosAddress = doc.getString("rosAddress") ?: "",
+                        videoUrl = doc.getString("videoUrl") ?: "",
+                        thumbnailPath = doc.getString("thumbnailPath"),
+                        cmdVelTopic = topicBinding("cmdVelTopic"),
+                        modeTopic = topicBinding("modeTopic"),
+                        batteryTopic = topicBinding("batteryTopic"),
+                        imuTopic = topicBinding("imuTopic"),
+                        odomTopic = topicBinding("odomTopic"),
+                        jointStateTopic = topicBinding("jointStateTopic"),
+                        modes = modes,
+                        enabledIndicators = enabledIndicators,
+                        totalUptimeSeconds = doc.getLong("totalUptimeSeconds") ?: 0L,
+                        totalDistanceMeters = doc.getDouble("totalDistanceMeters") ?: 0.0,
+                        invertForwardBack = doc.getBoolean("invertForwardBack") ?: false,
+                        invertStrafe = doc.getBoolean("invertStrafe") ?: false,
+                        invertHeight = doc.getBoolean("invertHeight") ?: false,
+                        invertTurn = doc.getBoolean("invertTurn") ?: false,
+                        robotId = robotId,
+                        ownerUid = uid
+                    )
+                }
+                onResult(robots)
+            } catch (e: Exception) {
+                onFailure(e)
+            }
+        }
+        .addOnFailureListener { e ->
+            onFailure(e)
+        }
 }
 
 @Composable
@@ -295,7 +400,6 @@ fun HelpNote(text: String) {
     )
 }
 
-
 @Composable
 fun CyberDialog(
     show: Boolean,
@@ -316,8 +420,8 @@ fun CyberDialog(
                 .shadow(
                     elevation = 20.dp,
                     shape = RoundedCornerShape(16.dp),
-                    ambientColor = HudBlue,
-                    spotColor = Color(0xFF008CFF)
+                    ambientColor = HudBlue, // Explicitly named to avoid type mismatch
+                    spotColor = HudBlue    // Explicitly named
                 )
                 .border(
                     width = 1.5.dp,
@@ -337,6 +441,7 @@ fun CyberDialog(
                 )
                 .padding(10.dp)
         ) {
+            // ... rest of dialog content remains the same
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -371,43 +476,24 @@ fun CyberDialog(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TextButton(
-                        onClick = onDismiss,
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            "DISMISS",
-                            color = HudText.copy(alpha = 0.75f),
-                            fontWeight = FontWeight.Medium
-                        )
+                    TextButton(onClick = onDismiss) {
+                        Text("DISMISS", color = HudText.copy(alpha = 0.75f))
                     }
 
-                    // THIS IS THE KEY FIX: Only show the button if confirmText is not empty
                     if (confirmText.isNotEmpty()) {
                         Spacer(modifier = Modifier.width(12.dp))
-
                         CyberButton(
                             onClick = onConfirm,
-                            modifier = Modifier
-                                .height(35.dp)
-                                .width(130.dp)
+                            modifier = Modifier.height(35.dp).width(130.dp)
                         ) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .border(1.dp, HudBlue, RoundedCornerShape(10.dp))
-                                    .background(
-                                        HudBlue.copy(alpha = 0.10f),
-                                        RoundedCornerShape(10.dp)
-                                    ),
+                                    .background(HudBlue.copy(alpha = 0.10f), RoundedCornerShape(10.dp)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = confirmText,
-                                    color = HudBlue,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
-                                )
+                                Text(confirmText, color = HudBlue, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             }
                         }
                     }
@@ -416,6 +502,7 @@ fun CyberDialog(
         }
     }
 }
+
 @Composable
 fun CyberButton(
     onClick: () -> Unit,
@@ -476,11 +563,71 @@ class MainActivity : ComponentActivity() {
 
 enum class Screen { Menu, Gamepad, RobotSetup, Account }
 
+
+@Composable
+fun GlobalTopBar(onOpenAccount: () -> Unit, onOpenHelp: () -> Unit) {
+    Surface(
+        color = Color.Black,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp) // Tighter vertical padding
+                .statusBarsPadding(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Help Icon on the Left
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .background(HudBlue.copy(alpha = 0.15f), CircleShape)
+                    .border(1.dp, HudBlue.copy(alpha = 0.4f), CircleShape)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onOpenHelp
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Help,
+                    contentDescription = "Help",
+                    tint = HudBlue,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            // Profile Icon on the Right
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .background(HudBlue.copy(alpha = 0.15f), CircleShape)
+                    .border(1.dp, HudBlue.copy(alpha = 0.4f), CircleShape)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onOpenAccount
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Person,
+                    contentDescription = "Profile",
+                    tint = HudBlue,
+                    modifier = Modifier.size(20.dp) // Smaller icon
+                )
+            }
+        }
+    }
+}
 @Composable
 fun AppNavigation(reHideSystemBars: () -> Unit) {
     val context = LocalContext.current
     val robotManager = remember { RobotManager(context) }
 
+    var signedInUser by remember { mutableStateOf(FirebaseAuth.getInstance().currentUser) }
 
     var terminalText by remember { mutableStateOf("") }
     var hasBooted by remember { mutableStateOf(false) }
@@ -496,12 +643,14 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
         if (!hasBooted) {
             val (status, addr) = networkInfo
             val isConnected = status == "WIFI_CONNECTED"
+            val userEmail = signedInUser?.email ?: "GUEST"
 
             val script = if (isConnected) {
                 // Standard success boot
                 "> BOOTING_ROS_CONTROLLER" +
                         "\n|>" +
                         "\n|>" +
+                        "\n|> USER: $userEmail" +
                         "\n|> LINK: $status" +
                         "\n|> IP: $addr" +
                         "\n|>" +
@@ -512,6 +661,7 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
                 "> BOOTING_ROS_CONTROLLER" +
                         "\n|>" +
                         "\n|>" +
+                        "\n|> USER: $userEmail" +
                         "\n|> LINK: $status" +
                         "\n|> IP: UNKNOWN" +
                         "\n|>" +
@@ -532,15 +682,17 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
         }
     }
 
-    LaunchedEffect(networkInfo) {
+    LaunchedEffect(networkInfo, signedInUser) {
         if (hasBooted) {
             val (status, addr) = networkInfo
             val isConnected = status == "WIFI_CONNECTED"
+            val userEmail = signedInUser?.email ?: "GUEST"
 
             terminalText = if (isConnected) {
                 "> BOOTING_ROS_CONTROLLER" +
                         "\n|>" +
                         "\n|>" +
+                        "\n|> USER: $userEmail" +
                         "\n|> LINK: $status" +
                         "\n|> IP: $addr" +
                         "\n|>" +
@@ -551,6 +703,7 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
                 "> BOOTING_ROS_CONTROLLER" +
                         "\n|>" +
                         "\n|>" +
+                        "\n|> USER: $userEmail" +
                         "\n|> LINK: $status" +
                         "\n|> IP: UNKNOWN" +
                         "\n|>" +
@@ -561,50 +714,57 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
         }
     }
 
-    var savedRobots by remember { mutableStateOf<List<RobotConfig>>(emptyList()) }
+    fun buildDemoRobot(ownerUid: String = RobotManager.GUEST_OWNER_UID): RobotConfig {
+        return RobotConfig(
+            name = "ROSbot (Demo)",
+            rosAddress = "192.168.1.XX",
+            videoUrl = "http://192.168.1.XX:8080/stream?topic=/camera/image_raw",
+            thumbnailPath = "demo_thumb",
+            cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
+            modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
+            jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
+            modes = listOf(
+                RobotMode("STAND", "stand"),
+                RobotMode("WALK", "walk"),
+                RobotMode("LAY", "lay"),
+                RobotMode("SHAKE", "shake"),
+                RobotMode("SIT", "sit"),
+                RobotMode("WAVE", "wave"),
+            ),
+            invertForwardBack = false,
+            invertStrafe = true,
+            invertHeight = false,
+            invertTurn = true,
+            ownerUid = ownerUid
+        )
+    }
+
+    fun loadRobotsForOwner(ownerUid: String?): List<RobotConfig> {
+        val normalizedOwner = RobotManager.normalizeOwnerUid(ownerUid)
+        val loaded = robotManager.loadRobots(normalizedOwner)
+        val needsDemo = loaded.isEmpty() || loaded.any { it.name.lowercase() == "jax-1" }
+
+        if (!needsDemo) {
+            return loaded
+        }
+
+        val demo = buildDemoRobot(normalizedOwner)
+        val cleaned = loaded.filterNot { it.name.lowercase() == "jax-1" }
+        val withDemo = if (cleaned.any { it.isDemoRobot() }) cleaned else listOf(demo) + cleaned
+
+        robotManager.saveRobots(withDemo, normalizedOwner)
+        return withDemo
+    }
+
+    var savedRobots by remember {
+        mutableStateOf(loadRobotsForOwner(signedInUser?.uid))
+    }
 
     var currentScreen by remember { mutableStateOf(Screen.Menu) }
     var currentRobot by remember {
-        mutableStateOf(RobotConfig("ROSbot (Demo)", "", ""))
+        mutableStateOf(savedRobots.firstOrNull() ?: buildDemoRobot(RobotManager.normalizeOwnerUid(signedInUser?.uid)))
     }
     var hapticsEnabled by remember { mutableStateOf(true) }
-    var signedInUser by remember { mutableStateOf(FirebaseAuth.getInstance().currentUser) }
-
-    LaunchedEffect(signedInUser?.uid) {
-        val loaded = robotManager.loadRobotsForUser(signedInUser?.uid)
-        val cleaned = if (loaded.isEmpty() || loaded.any { it.name.lowercase() == "jax-1" }) {
-            listOf(
-                RobotConfig(
-                    name = "ROSbot (Demo)",
-                    rosAddress = "192.168.1.XX",
-                    videoUrl = "http://192.168.1.XX:8080/stream?topic=/camera/image_raw",
-                    thumbnailPath = "demo_thumb",
-                    ownerUid = signedInUser?.uid,
-                    cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
-                    modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
-                    jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
-                    modes = listOf(
-                        RobotMode("STAND", "stand"),
-                        RobotMode("WALK", "walk"),
-                        RobotMode("LAY", "lay"),
-                        RobotMode("SHAKE", "shake"),
-                        RobotMode("SIT", "sit"),
-                        RobotMode("WAVE", "wave"),
-                    ),
-                    invertForwardBack = false,
-                    invertStrafe = true,
-                    invertHeight = false,
-                    invertTurn = true
-                )
-            )
-        } else loaded
-
-        savedRobots = cleaned
-
-        if (cleaned.none { it.name == currentRobot.name }) {
-            currentRobot = cleaned.firstOrNull() ?: RobotConfig("ROSbot (Demo)", "", "")
-        }
-    }
 
     val ros = remember { RosbridgeClient() }
     val activity = LocalContext.current as? ComponentActivity
@@ -624,74 +784,181 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
         }
     }
 
-    when (currentScreen) {
-        Screen.Menu -> StartMenuScreen(
-            ros = ros,
-            savedRobots = savedRobots,
-            terminalText = terminalText,
-            isSignedIn = signedInUser != null,
-            signedInLabel = signedInUser?.email ?: "Signed in",
-            onLaunchGamepad = { robot ->
-                currentRobot = robot
-                currentScreen = Screen.Gamepad
+    DisposableEffect(Unit) {
+        val auth = FirebaseAuth.getInstance()
+        val listener = FirebaseAuth.AuthStateListener { firebaseAuth ->
+            signedInUser = firebaseAuth.currentUser
+        }
+        auth.addAuthStateListener(listener)
+        onDispose { auth.removeAuthStateListener(listener) }
+    }
+
+    LaunchedEffect(signedInUser?.uid) {
+        val ownerUid = signedInUser?.uid
+
+        if (ownerUid.isNullOrBlank()) {
+            val guestRobots = loadRobotsForOwner(RobotManager.GUEST_OWNER_UID)
+            savedRobots = guestRobots
+            currentRobot = guestRobots.firstOrNull { it.robotId == currentRobot.robotId }
+                ?: guestRobots.firstOrNull()
+                        ?: buildDemoRobot(RobotManager.GUEST_OWNER_UID)
+            return@LaunchedEffect
+        }
+
+        fetchRobotsFromFirestoreForSignedInUser(
+            uid = ownerUid,
+            onResult = { cloudRobots ->
+                val cloudBase = cloudRobots
+                    .filterNot { it.isDemoRobot() }
+                    .associateBy { it.robotId }
+                    .toMutableMap()
+
+                val guestRobots = robotManager.loadRobots(RobotManager.GUEST_OWNER_UID)
+                    .filterNot { it.isDemoRobot() }
+
+                guestRobots.forEach { guestRobot ->
+                    val migrated = guestRobot.copy(ownerUid = ownerUid)
+                    val duplicateCloud = cloudBase.values.any {
+                        it.name.equals(migrated.name, ignoreCase = true)
+                    }
+                    if (!cloudBase.containsKey(migrated.robotId) && !duplicateCloud) {
+                        cloudBase[migrated.robotId] = migrated
+                    }
+                }
+
+                val merged = cloudBase.values.toList()
+                val updatedRobots = if (merged.isEmpty()) {
+                    loadRobotsForOwner(ownerUid)
+                } else {
+                    val withDemo = if (merged.any { it.isDemoRobot() }) merged else listOf(buildDemoRobot(ownerUid)) + merged
+                    robotManager.saveRobots(withDemo, ownerUid)
+                    robotManager.clearOwner(RobotManager.GUEST_OWNER_UID)
+                    syncRobotsToFirestoreForSignedInUser(withDemo)
+                    withDemo
+                }
+
+                savedRobots = updatedRobots
+                currentRobot = updatedRobots.firstOrNull { it.robotId == currentRobot.robotId }
+                    ?: updatedRobots.firstOrNull()
+                            ?: buildDemoRobot(ownerUid)
             },
-            onLaunchSetup = { currentScreen = Screen.RobotSetup },
-            onOpenAccount = {
-                signedInUser = FirebaseAuth.getInstance().currentUser
-                currentScreen = Screen.Account
+            onFailure = {
+                val merged = robotManager.mergeGuestRobotsIntoOwner(ownerUid)
+                val withDemo = if (merged.isEmpty()) loadRobotsForOwner(ownerUid) else merged
+                syncRobotsToFirestoreForSignedInUser(withDemo)
+                savedRobots = withDemo
+                currentRobot = withDemo.firstOrNull { it.robotId == currentRobot.robotId }
+                    ?: withDemo.firstOrNull()
+                            ?: buildDemoRobot(ownerUid)
             }
         )
+    }
 
-        Screen.Account -> AccountScreen(
-            onBack = {
-                signedInUser = FirebaseAuth.getInstance().currentUser
-                currentScreen = Screen.Menu
+    var showGlobalHelp by remember { mutableStateOf(false) }
+
+    if (showGlobalHelp) {
+        HelpDialog(show = true, onDismiss = { showGlobalHelp = false })
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (currentScreen != Screen.Gamepad) {
+            GlobalTopBar(
+                onOpenAccount = {
+                    currentScreen = Screen.Account
+                },
+                onOpenHelp = {
+                    showGlobalHelp = true
+                }
+            )
+        }
+
+        Box(modifier = Modifier.weight(1f)) {
+            when (currentScreen) {
+                Screen.Menu -> StartMenuScreen(
+                    ros = ros,
+                    savedRobots = savedRobots,
+                    terminalText = terminalText,
+                    isSignedIn = signedInUser != null,
+                    signedInLabel = signedInUser?.email ?: "Signed in",
+                    onLaunchGamepad = { robot ->
+                        currentRobot = robot
+                        currentScreen = Screen.Gamepad
+                    },
+                    onLaunchSetup = { currentScreen = Screen.RobotSetup },
+                    onOpenAccount = {
+                        currentScreen = Screen.Account
+                    }
+                )
+
+                Screen.Account -> AccountScreen(
+                    onBack = {
+                        currentScreen = Screen.Menu
+                    }
+                )
+
+                Screen.Gamepad -> JaxDriverScreen(
+                    ros = ros,
+                    currentRobot = currentRobot,
+                    savedRobots = savedRobots,
+                    hapticsEnabled = hapticsEnabled,
+                    onRobotChange = { newRobot ->
+                        currentRobot = newRobot
+                        val ownerUid = RobotManager.normalizeOwnerUid(signedInUser?.uid)
+                        val normalizedRobot = newRobot.copy(ownerUid = ownerUid)
+                        val list = savedRobots.toMutableList()
+                        val idx = list.indexOfFirst { it.robotId == normalizedRobot.robotId }
+                        if (idx != -1) {
+                            list[idx] = normalizedRobot
+                            savedRobots = list
+                            robotManager.saveRobots(list, ownerUid)
+                            saveRobotConfigToFirestore(normalizedRobot)
+                        }
+                    },
+                    onHapticsChange = { hapticsEnabled = it },
+                    reHideSystemBars = reHideSystemBars,
+                    onBackToMenu = { currentScreen = Screen.Menu },
+                    networkInfo = networkInfo
+                )
+
+                Screen.RobotSetup -> RobotSetupScreen(
+                    ros = ros,
+                    savedRobots = savedRobots,
+                    onSave = { oldName, newRobot ->
+                        val ownerUid = RobotManager.normalizeOwnerUid(signedInUser?.uid)
+                        val normalizedRobot = newRobot.copy(ownerUid = ownerUid)
+                        val list = savedRobots.toMutableList()
+                        val index = list.indexOfFirst { it.robotId == normalizedRobot.robotId }
+                            .takeIf { it != -1 }
+                            ?: list.indexOfFirst { it.name == oldName }
+
+                        if (index != -1) {
+                            list[index] = normalizedRobot
+                        } else {
+                            list.add(normalizedRobot)
+                        }
+
+                        savedRobots = list
+                        robotManager.saveRobots(list, ownerUid)
+
+                        if (currentRobot.robotId == normalizedRobot.robotId || currentRobot.name == oldName) {
+                            currentRobot = normalizedRobot
+                        }
+                    },
+                    onDelete = { robot ->
+                        val ownerUid = RobotManager.normalizeOwnerUid(signedInUser?.uid)
+                        val list = savedRobots.filter { it.robotId != robot.robotId }
+                        savedRobots = list
+                        robotManager.saveRobots(list, ownerUid)
+                        deleteRobotConfigFromFirestore(robot)
+                        currentRobot = list.firstOrNull() ?: buildDemoRobot(ownerUid)
+                    },
+                    onBack = { currentScreen = Screen.Menu },
+                    onOpenAccount = {
+                        currentScreen = Screen.Account
+                    }
+                )
             }
-        )
-
-        Screen.Gamepad -> JaxDriverScreen(
-            ros = ros,
-            currentRobot = currentRobot,
-            savedRobots = savedRobots,
-            hapticsEnabled = hapticsEnabled,
-            onRobotChange = { newRobot ->
-                currentRobot = newRobot
-                val list = savedRobots.toMutableList()
-                val idx = list.indexOfFirst { it.name == newRobot.name }
-                if (idx != -1) {
-                    list[idx] = newRobot
-                    savedRobots = list
-                    robotManager.saveRobotsForUser(signedInUser?.uid, list)
-                }
-            },
-            onHapticsChange = { hapticsEnabled = it },
-            reHideSystemBars = reHideSystemBars,
-            onBackToMenu = { currentScreen = Screen.Menu },
-            networkInfo = networkInfo
-        )
-
-        Screen.RobotSetup -> RobotSetupScreen(
-            ros = ros,
-            savedRobots = savedRobots,
-            currentUserId = signedInUser?.uid,
-            onSave = { oldName, newRobot ->
-                val list = savedRobots.toMutableList()
-                val index = list.indexOfFirst { it.name == oldName }
-                if (index != -1) list[index] = newRobot else list.add(newRobot)
-                savedRobots = list
-                robotManager.saveRobotsForUser(signedInUser?.uid, list)
-                if (currentRobot.name == oldName) currentRobot = newRobot
-            },
-            onDelete = { robot ->
-                val list = savedRobots.filter { it.name != robot.name }
-                savedRobots = list
-                robotManager.saveRobotsForUser(signedInUser?.uid, list)
-                if (list.isNotEmpty()) {
-                    currentRobot = list.first()
-                }
-            },
-            onBack = { currentScreen = Screen.Menu }
-        )
+        }
     }
 }
 
@@ -983,10 +1250,10 @@ fun JaxDriverScreen(
 fun RobotSetupScreen(
     ros: RosbridgeClient,
     savedRobots: List<RobotConfig>,
-    currentUserId: String?,
     onSave: (String?, RobotConfig) -> Unit,
     onDelete: (RobotConfig) -> Unit,
     onBack: () -> Unit,
+    onOpenAccount: () -> Unit,
     initialEditingRobot: RobotConfig? = null,
     initialIsAdding: Boolean = false,
     initialSelectedTabOrStep: Int = 0
@@ -1121,7 +1388,7 @@ fun RobotSetupScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(HudBackground)
-            .statusBarsPadding()
+
     ) {
         Image(
             painter = painterResource(id = R.drawable.bg_app),
@@ -1129,6 +1396,8 @@ fun RobotSetupScreen(
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop
         )
+
+
 
         if (editingRobot == null && !isAdding) {
             Column(
@@ -1151,27 +1420,9 @@ fun RobotSetupScreen(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(
-                            onClick = { showHelp = true },
-                            modifier = Modifier
-                                .background(HudBlue.copy(alpha = 0.1f), CircleShape)
-                                .border(1.dp, HudBlue.copy(alpha = 0.4f), CircleShape)
-                                .size(36.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Help,
-                                contentDescription = "Help",
-                                tint = HudBlue
-                            )
-                        }
-                    }
-
                     Row(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -1399,23 +1650,9 @@ fun RobotSetupScreen(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.End
                 ) {
-                    IconButton(
-                        onClick = { showHelp = true },
-                        modifier = Modifier
-                            .padding(end = 8.dp)
-                            .background(HudBlue.copy(alpha = 0.1f), CircleShape)
-                            .border(1.dp, HudBlue.copy(alpha = 0.4f), CircleShape)
-                            .size(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Help,
-                            contentDescription = "Help",
-                            tint = HudBlue,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
 
                     TabRow(
                         selectedTabIndex = selectedTabOrStep,
@@ -1769,12 +2006,12 @@ fun RobotSetupScreen(
                                         initial.thumbnailPath
                                     }
 
+                                val currentOwnerUid = RobotManager.normalizeOwnerUid(FirebaseAuth.getInstance().currentUser?.uid)
                                 val newConfig = RobotConfig(
                                     name = name,
                                     rosAddress = addr,
                                     videoUrl = url,
                                     thumbnailPath = thumb,
-                                    ownerUid = currentUserId ?: initial.ownerUid,
                                     cmdVelTopic = cmdVelTopic,
                                     modeTopic = modeTopic,
                                     batteryTopic = batteryTopic,
@@ -1788,7 +2025,9 @@ fun RobotSetupScreen(
                                     invertForwardBack = invertForwardBack,
                                     invertStrafe = invertStrafe,
                                     invertHeight = invertHeight,
-                                    invertTurn = invertTurn
+                                    invertTurn = invertTurn,
+                                    robotId = editingRobot?.robotId ?: initial.robotId,
+                                    ownerUid = currentOwnerUid
                                 )
 
                                 onSave(editingRobot?.name, newConfig)
@@ -1796,7 +2035,7 @@ fun RobotSetupScreen(
                                 firestoreStatus = "Saving robot to cloud..."
                                 pendingCloseAfterCloudSave = true
 
-                                saveRobotConfigToFirestore(newConfig, currentUserId) { result ->
+                                saveRobotConfigToFirestore(newConfig) { result ->
                                     firestoreStatus = result
                                     showCloudResultDialog = true
                                 }
@@ -1935,6 +2174,8 @@ fun StartMenuScreen(
             contentScale = ContentScale.Crop
         )
 
+        // Profile Button removed, now persistent in AppNavigation
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -2008,24 +2249,6 @@ fun StartMenuScreen(
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
-
-                Text(
-                    text = if (isSignedIn) "SIGNED IN: $signedInLabel" else "NOT SIGNED IN",
-                    color = if (isSignedIn) HudBlue else HudText.copy(alpha = 0.7f),
-                    fontSize = 12.sp
-                )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                TextButton(
-                    onClick = onOpenAccount
-                ) {
-                    Text(
-                        text = if (isSignedIn) "ACCOUNT" else "CREATE PROFILE",
-                        color = HudBlue,
-                        fontSize = 14.sp
-                    )
-                }
             }
         }
 
@@ -2882,12 +3105,209 @@ fun ModeEditDialog(
         }
     }
 }
+@Preview(showBackground = true, widthDp = 412, heightDp = 915, name = "Robot List")
+@Composable
+fun PreviewRobotSetupListScreen() {
+    JaxGamepadTheme {
+        RobotSetupScreen(
+            ros = RosbridgeClient(),
+            savedRobots = listOf(
+                RobotConfig(
+                    name = "Jax",
+                    rosAddress = "192.168.1.154:9090",
+                    videoUrl = "http://192.168.1.154:8080/stream?topic=/image_raw",
+                    thumbnailPath = "demo_thumb",
+                    cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
+                    modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
+                    jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
+                    modes = listOf(
+                        RobotMode("STAND", "stand"),
+                        RobotMode("WALK", "walk"),
+                        RobotMode("SIT", "sit")
+                    )
+                )
+            ),
+            onSave = { _, _ -> },
+            onDelete = {},
+            onBack = {},
+            onOpenAccount = {}
+        )
+    }
+}
 
+@Preview(showBackground = true, widthDp = 412, heightDp = 915, name = "New Robot - Step 1")
+@Composable
+fun PreviewNewRobotStep1() {
+    JaxGamepadTheme {
+        RobotSetupScreen(
+            ros = RosbridgeClient(),
+            savedRobots = listOf(
+                RobotConfig(
+                    name = "ROSbot (Demo)",
+                    rosAddress = "192.168.1.XX:9090",
+                    videoUrl = "",
+                    thumbnailPath = "demo_thumb",
+                    cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
+                    modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
+                    jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
+                    modes = listOf(
+                        RobotMode("STAND", "stand"),
+                        RobotMode("WALK", "walk")
+                    )
+                )
+            ),
+            onSave = { _, _ -> },
+            onDelete = {},
+            onBack = {},
+            onOpenAccount = {},
+            initialEditingRobot = RobotConfig(
+                name = "",
+                rosAddress = "",
+                videoUrl = "",
+                thumbnailPath = null,
+                modes = emptyList()
+            ),
+            initialIsAdding = true,
+            initialSelectedTabOrStep = 0
+        )
+    }
+}
 
+@Preview(showBackground = true, widthDp = 412, heightDp = 915, name = "New Robot - Topics")
+@Composable
+fun PreviewNewRobotStep2Topics() {
+    JaxGamepadTheme {
+        RobotSetupScreen(
+            ros = RosbridgeClient(),
+            savedRobots = listOf(
+                RobotConfig(
+                    name = "ROSbot (Demo)",
+                    rosAddress = "192.168.1.XX:9090",
+                    videoUrl = "",
+                    thumbnailPath = "demo_thumb",
+                    cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
+                    modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
+                    jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
+                    modes = listOf(
+                        RobotMode("STAND", "stand"),
+                        RobotMode("WALK", "walk")
+                    )
+                )
+            ),
+            onSave = { _, _ -> },
+            onDelete = {},
+            onBack = {},
+            onOpenAccount = {},
+            initialEditingRobot = RobotConfig(
+                name = "Jax",
+                rosAddress = "192.168.1.154:9090",
+                videoUrl = "http://192.168.1.154:8080/stream?topic=/image_raw",
+                thumbnailPath = null,
+                modes = emptyList()
+            ),
+            initialIsAdding = true,
+            initialSelectedTabOrStep = 1
+        )
+    }
+}
 
+@Preview(showBackground = true, widthDp = 412, heightDp = 915, name = "New Robot - Modes")
+@Composable
+fun PreviewNewRobotStep3Modes() {
+    JaxGamepadTheme {
+        RobotSetupScreen(
+            ros = RosbridgeClient(),
+            savedRobots = listOf(
+                RobotConfig(
+                    name = "ROSbot (Demo)",
+                    rosAddress = "192.168.1.XX:9090",
+                    videoUrl = "",
+                    thumbnailPath = "demo_thumb",
+                    cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
+                    modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
+                    jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
+                    modes = listOf(
+                        RobotMode("STAND", "stand"),
+                        RobotMode("WALK", "walk")
+                    )
+                )
+            ),
+            onSave = { _, _ -> },
+            onDelete = {},
+            onBack = {},
+            onOpenAccount = {},
+            initialEditingRobot = RobotConfig(
+                name = "Jax",
+                rosAddress = "192.168.1.154:9090",
+                videoUrl = "http://192.168.1.154:8080/stream?topic=/image_raw",
+                thumbnailPath = null,
+                modes = listOf(
+                    RobotMode("STAND", "stand"),
+                    RobotMode("WALK", "walk"),
+                    RobotMode("SIT", "sit")
+                )
+            ),
+            initialIsAdding = true,
+            initialSelectedTabOrStep = 2
+        )
+    }
+}
 
-
-
+@Preview(showBackground = true, widthDp = 412, heightDp = 915, name = "Edit Robot")
+@Composable
+fun PreviewEditRobotScreen() {
+    JaxGamepadTheme {
+        RobotSetupScreen(
+            ros = RosbridgeClient(),
+            savedRobots = listOf(
+                RobotConfig(
+                    name = "Jax",
+                    rosAddress = "192.168.1.154:9090",
+                    videoUrl = "http://192.168.1.154:8080/stream?topic=/image_raw",
+                    thumbnailPath = "demo_thumb",
+                    cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
+                    modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
+                    jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
+                    modes = listOf(
+                        RobotMode("STAND", "stand"),
+                        RobotMode("WALK", "walk"),
+                        RobotMode("SIT", "sit"),
+                        RobotMode("LAY", "lay")
+                    ),
+                    invertForwardBack = false,
+                    invertStrafe = true,
+                    invertHeight = false,
+                    invertTurn = true
+                )
+            ),
+            onSave = { _, _ -> },
+            onDelete = {},
+            onBack = {},
+            onOpenAccount = {},
+            initialEditingRobot = RobotConfig(
+                name = "Jax",
+                rosAddress = "192.168.1.154:9090",
+                videoUrl = "http://192.168.1.154:8080/stream?topic=/image_raw",
+                thumbnailPath = "demo_thumb",
+                cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
+                modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
+                jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
+                modes = listOf(
+                    RobotMode("STAND", "stand"),
+                    RobotMode("WALK", "walk"),
+                    RobotMode("SIT", "sit"),
+                    RobotMode("LAY", "lay")
+                ),
+                invertForwardBack = false,
+                invertStrafe = true,
+                invertHeight = false,
+                invertTurn = true
+            ),
+            initialIsAdding = false,
+            initialSelectedTabOrStep = 0
+        )
+    }
+}
 
 @Preview(showBackground = true, widthDp = 915, heightDp = 412)
 @Composable
