@@ -1,6 +1,6 @@
 package com.example.jaxgamepad
 
-import com.example.jaxgamepad.ui.HudIndicator
+import com.example.jaxgamepad.ui.screens.HudIndicator
 import java.util.UUID
 
 data class TopicBinding(

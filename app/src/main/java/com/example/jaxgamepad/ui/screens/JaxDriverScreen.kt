@@ -1,0 +1,466 @@
+package com.example.jaxgamepad.ui.screens
+
+import android.annotation.SuppressLint
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.SignalWifiStatusbarConnectedNoInternet4
+import androidx.compose.material.icons.filled.VideocamOff
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.jaxgamepad.CyberButton
+import com.example.jaxgamepad.CyberDialog
+import com.example.jaxgamepad.MjpegWebView
+import com.example.jaxgamepad.R
+import com.example.jaxgamepad.RobotConfig
+import com.example.jaxgamepad.RosbridgeClient
+import com.example.jaxgamepad.SettingsDialog
+import com.example.jaxgamepad.formatUptime
+import com.example.jaxgamepad.ui.theme.MyColors
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+@Composable
+fun JaxDriverScreen(
+    ros: RosbridgeClient,
+    currentRobot: RobotConfig,
+    savedRobots: List<RobotConfig>,
+    hapticsEnabled: Boolean,
+    onRobotChange: (RobotConfig) -> Unit,
+    onHapticsChange: (Boolean) -> Unit,
+    reHideSystemBars: () -> Unit,
+    onBackToMenu: () -> Unit,
+    networkInfo: Pair<String, String>
+) {
+    var moveX by remember { mutableStateOf(0.0) }
+    var moveY by remember { mutableStateOf(0.0) }
+    var turnZ by remember { mutableStateOf(0.0) }
+    var bodyHeightZ by remember { mutableStateOf(0.0) }   // -1.0 .. 1.0
+    var bodyRollX by remember { mutableStateOf(0.0) }     // for rest mode later
+    var bodyPitchY by remember { mutableStateOf(0.0) }    // for rest mode later
+    var showSettings by remember { mutableStateOf(false) }
+    var showTerminateVerify by remember { mutableStateOf(false) }
+    var reconnectNonce by remember { mutableIntStateOf(0) }
+
+    ros.isConnected
+    val sessionBaseUptime = remember(currentRobot.name) { currentRobot.totalUptimeSeconds }
+    var sessionSeconds by remember(currentRobot.name) { mutableLongStateOf(0L) }
+    var sessionRunning by remember(currentRobot.name) { mutableStateOf(false) }
+    var lastSavedSessionSeconds by remember(currentRobot.name) { mutableLongStateOf(0L) }
+    var wasConnected by remember(currentRobot.name) { mutableStateOf(false) }
+    val liveSessionText = formatUptime(sessionSeconds)
+    val activeIndicators = remember(currentRobot) {
+        currentRobot.enabledIndicators.mapNotNull {
+            try {
+                HudIndicator.valueOf(it)
+            } catch (e: Exception) {
+                null
+            }
+        }.toSet()
+    }
+
+    var videoLoadedManually by remember(currentRobot.name) { mutableStateOf(false) }
+    var videoError by remember(currentRobot.videoUrl) { mutableStateOf<String?>(null) }
+    var videoButtonActive by remember(currentRobot.videoUrl) { mutableStateOf(false) }
+
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(currentRobot.rosAddress, reconnectNonce) {
+        if (currentRobot.rosAddress.isNotBlank()) {
+            ros.disconnect()
+            ros.connect("ws://${currentRobot.rosAddress}") {
+                ros.advertiseIfNeeded(currentRobot)
+                ros.subscribeToTelemetry(currentRobot)
+            }
+        }
+    }
+
+    DisposableEffect(currentRobot) {
+        onDispose { ros.clearTelemetrySubscriptions(currentRobot) }
+    }
+
+    DisposableEffect(
+        ros.isConnected,
+        moveX,
+        moveY,
+        turnZ,
+        bodyHeightZ,
+        bodyRollX,
+        bodyPitchY,
+        currentRobot
+    ) {
+        val linearX = if (currentRobot.invertForwardBack) -moveY else moveY
+        val linearY = if (currentRobot.invertStrafe) -moveX else moveX
+        val linearZ = if (currentRobot.invertHeight) -bodyHeightZ else bodyHeightZ
+        val angularZ = if (currentRobot.invertTurn) -turnZ else turnZ
+
+        val publishJob: Job? = if (ros.isConnected) {
+            scope.launch {
+                while (true) {
+                    ros.publishCmdVel(
+                        robot = currentRobot,
+                        linearX = linearX,
+                        linearY = linearY,
+                        linearZ = linearZ,
+                        angularX = bodyRollX,
+                        angularY = bodyPitchY,
+                        angularZ = angularZ
+                    )
+
+                    delay(75)
+                }
+            }
+        } else {
+            null
+        }
+        onDispose { publishJob?.cancel() }
+    }
+
+    LaunchedEffect(ros.isConnected, currentRobot.name) {
+        if (ros.isConnected) {
+            sessionRunning = true
+            wasConnected = true
+        } else {
+            sessionRunning = false
+
+            if (wasConnected && sessionSeconds > lastSavedSessionSeconds) {
+                onRobotChange(
+                    currentRobot.copy(
+                        totalUptimeSeconds = sessionBaseUptime + sessionSeconds
+                    )
+                )
+                lastSavedSessionSeconds = sessionSeconds
+            }
+
+            wasConnected = false
+        }
+    }
+
+    LaunchedEffect(sessionRunning, currentRobot.name) {
+        while (sessionRunning) {
+            delay(1000)
+            sessionSeconds += 1L
+
+            if (sessionSeconds - lastSavedSessionSeconds >= 10L) {
+                onRobotChange(
+                    currentRobot.copy(
+                        totalUptimeSeconds = sessionBaseUptime + sessionSeconds
+                    )
+                )
+                lastSavedSessionSeconds = sessionSeconds
+            }
+        }
+    }
+
+    DisposableEffect(currentRobot.name) {
+        onDispose {
+            if (sessionSeconds > lastSavedSessionSeconds) {
+                onRobotChange(
+                    currentRobot.copy(
+                        totalUptimeSeconds = sessionBaseUptime + sessionSeconds
+                    )
+                )
+            }
+        }
+    }
+
+    if (showSettings) {
+        SettingsDialog(
+            savedRobots = savedRobots,
+            currentRobot = currentRobot,
+            initialHaptics = hapticsEnabled,
+            activeIndicators = activeIndicators,
+            onToggleIndicator = { ind ->
+                val newSet = if (activeIndicators.contains(ind)) {
+                    activeIndicators - ind
+                } else {
+                    activeIndicators + ind
+                }
+                onRobotChange(currentRobot.copy(enabledIndicators = newSet.map { it.name }))
+            },
+            onDismiss = {
+                showSettings = false
+                reHideSystemBars()
+            },
+            onSave = { robot, haptics ->
+                onRobotChange(robot)
+                onHapticsChange(haptics)
+                showSettings = false
+                reHideSystemBars()
+            },
+            onDisconnect = { ros.disconnect() },
+            onBackToMenu = onBackToMenu
+        )
+    }
+
+    if (showTerminateVerify) {
+        val powerActionText = if (ros.isConnected) "" else "RECONNECT ▶"
+
+        CyberDialog(
+            show = showTerminateVerify,
+            title = "POWER OPTIONS",
+            confirmText = powerActionText,
+            onConfirm = {
+                if (!ros.isConnected) {
+                    ros.disconnect()
+                    reconnectNonce++
+                    showTerminateVerify = false
+                    reHideSystemBars()
+                }
+            },
+            onDismiss = {
+                showTerminateVerify = false
+                reHideSystemBars()
+            }
+        ) {
+            Text(
+                text = if (ros.isConnected) {
+                    "ROS link is active. System is responding normally."
+                } else {
+                    "ROS link is offline. Link lost at ${networkInfo.second}."
+                },
+                color = MyColors.HudText,
+                fontSize = 14.sp
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            CyberButton(
+                onClick = {
+                    showTerminateVerify = false
+                    onBackToMenu()
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(42.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .border(1.dp, Color.Red.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+                        .background(Color.Red.copy(alpha = 0.05f), RoundedCornerShape(10.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "TERMINATE SESSION & EXIT",
+                        color = Color.Red.copy(alpha = 0.9f),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        }
+    }
+
+    JaxHudScreen(
+        robotName = currentRobot.name,
+        sessionTimeText = liveSessionText,
+        batteryPercent = ros.lastBatteryPercent ?: 0,
+        selectedMode = ros.lastModeText ?: currentRobot.modes.firstOrNull()?.command ?: "walk",
+        modes = currentRobot.modes,
+        enabledIndicators = activeIndicators,
+        leftJoystickValue = moveX.toFloat() to moveY.toFloat(),
+        rightJoystickValue = turnZ.toFloat() to 0f,
+        heightSliderValue = bodyHeightZ.toFloat(),
+        videoActive = videoButtonActive,
+        hapticsEnabled = hapticsEnabled,
+        isLinked = ros.isConnected,
+        onVideoToggle = { enabled ->
+            videoButtonActive = enabled
+            videoLoadedManually = enabled
+            videoError = null
+        },
+        onLeftJoystickChanged = { x, y ->
+            moveX = x.toDouble()
+            moveY = y.toDouble()
+        },
+        onRightJoystickChanged = { x, _ ->
+            turnZ = x.toDouble()
+        },
+        onHeightSliderChanged = { z ->
+            bodyHeightZ = z.toDouble()
+        },
+        onModeSelected = { mode -> ros.publishMode(currentRobot, mode) },
+        onSettingsClick = { showSettings = true },
+        onTerminateClick = { showTerminateVerify = true },
+        videoFeed = {
+            VideoFeedContainer(
+                modifier = Modifier.fillMaxSize(),
+                hatchOpen = videoButtonActive && videoLoadedManually,
+                errorText = videoError,
+                videoUrl = currentRobot.videoUrl
+            ) {
+                if (videoButtonActive) {
+                    MjpegWebView(
+                        url = currentRobot.videoUrl,
+                        onLoadingStateChanged = { _, error ->
+                            videoError = error
+                        },
+                        onUserInteraction = reHideSystemBars
+                    )
+                }
+            }
+        }
+    )
+}
+
+@Composable
+fun VideoFeedContainer(
+    modifier: Modifier = Modifier,
+    hatchOpen: Boolean,
+    errorText: String?,
+    videoUrl: String,
+    videoContent: @Composable BoxScope.() -> Unit
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.Black)
+            .border(1.dp, MyColors.HudBorder.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+    ) {
+        videoContent()
+
+        if (hatchOpen) {
+            Column(
+                modifier = Modifier.align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                val primaryMsg = if (videoUrl.isNotBlank()) "SIGNAL LINK ERROR" else "NO VIDEO FEED CONFIGURED"
+                val secondaryMsg = if (videoUrl.isNotBlank()) "CHECK NETWORK STATUS" else "SERVER URL REQUIRED"
+
+                Icon(
+                    imageVector = if (videoUrl.isNotBlank()) {
+                        Icons.Default.SignalWifiStatusbarConnectedNoInternet4
+                    } else {
+                        Icons.Default.VideocamOff
+                    },
+                    contentDescription = null,
+                    tint = MyColors.HudBlue.copy(alpha = 0.5f),
+                    modifier = Modifier.size(42.dp)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = primaryMsg,
+                    color = MyColors.HudBlue,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                )
+                Text(
+                    text = secondaryMsg,
+                    color = MyColors.HudBlue.copy(alpha = 0.6f),
+                    fontSize = 8.sp
+                )
+                if (videoUrl.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = videoUrl,
+                        color = MyColors.HudText.copy(alpha = 0.4f),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Light
+                    )
+                }
+            }
+        }
+
+        HatchOverlay(
+            modifier = Modifier.matchParentSize(),
+            isOpen = hatchOpen
+        )
+
+        if (!errorText.isNullOrBlank() && !hatchOpen) {
+            Text(
+                text = "VIDEO SYSTEM OFFLINE",
+                color = MyColors.HudBlue,
+                modifier = Modifier.align(Alignment.Center),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@SuppressLint("UnusedBoxWithConstraintsScope")
+@Composable
+fun HatchOverlay(
+    modifier: Modifier = Modifier,
+    isOpen: Boolean
+) {
+    val openFraction by animateFloatAsState(
+        targetValue = if (isOpen) 1f else 0f,
+        animationSpec = tween(850, easing = FastOutSlowInEasing),
+        label = "hatch_anim"
+    )
+
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val halfWidth = maxWidth / 2
+        val translationAmount = openFraction * (constraints.maxWidth.toFloat() / 2f)
+
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(halfWidth)
+                .align(Alignment.CenterStart)
+                .graphicsLayer { translationX = -translationAmount }
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.hatch_door_left),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.FillBounds
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(halfWidth)
+                .align(Alignment.CenterEnd)
+                .graphicsLayer { translationX = translationAmount }
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.hatch_door_right),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.FillBounds
+            )
+        }
+    }
+}

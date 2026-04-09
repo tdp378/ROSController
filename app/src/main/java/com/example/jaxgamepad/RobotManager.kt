@@ -1,6 +1,7 @@
 package com.example.jaxgamepad
 
 import android.content.Context
+import com.example.jaxgamepad.ui.screens.HudIndicator
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -86,7 +87,7 @@ class RobotManager(context: Context) {
                 val indicatorsList = if (indicatorsJson != null) {
                     List(indicatorsJson.length()) { indicatorsJson.getString(it) }
                 } else {
-                    com.example.jaxgamepad.ui.HudIndicator.entries.map { it.name }
+                    HudIndicator.entries.map { it.name }
                 }
 
                 robots.add(

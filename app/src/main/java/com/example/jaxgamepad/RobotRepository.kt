@@ -1,7 +1,7 @@
 package com.example.jaxgamepad
 
 import android.util.Log
-import com.example.jaxgamepad.ui.HudIndicator
+import com.example.jaxgamepad.ui.screens.HudIndicator
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 
