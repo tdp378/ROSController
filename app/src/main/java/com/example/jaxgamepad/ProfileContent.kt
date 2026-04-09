@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.sp
 import com.example.jaxgamepad.ui.theme.JaxGamepadTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.example.jaxgamepad.ui.theme.MyColors
 
 @Composable
 fun ProfileContent(
@@ -110,7 +111,7 @@ fun ProfileContent(
         Text(
             text = if (isLoginMode) "Enter credentials to synchronize data" else "Register for cloud synchronization",
             style = MaterialTheme.typography.bodyMedium,
-            color = HudText.copy(alpha = 0.7f),
+            color = MyColors.HudText.copy(alpha = 0.7f),
             fontFamily = FontFamily.Monospace,
             lineHeight = 16.sp,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -119,13 +120,13 @@ fun ProfileContent(
         Spacer(modifier = Modifier.height(32.dp))
 
         if (!isLoginMode) {
-            HudTextField(
+            MyColors.HudTextField(
                 value = displayName,
                 onValueChange = { displayName = it },
                 label = "Display Name"
             )
             Spacer(modifier = Modifier.height(12.dp))
-            HudTextField(
+            MyColors.HudTextField(
                 value = location,
                 onValueChange = { location = it },
                 label = "Location"
@@ -133,7 +134,7 @@ fun ProfileContent(
             Spacer(modifier = Modifier.height(12.dp))
         }
 
-        HudTextField(
+        MyColors.HudTextField(
             value = email,
             onValueChange = { email = it.trim() },
             label = "Email Address"
@@ -146,16 +147,16 @@ fun ProfileContent(
             onValueChange = { password = it },
             label = { Text("Access Password", fontSize = 11.sp) },
             visualTransformation = PasswordVisualTransformation(),
-            textStyle = TextStyle(color = HudText, fontSize = 14.sp),
+            textStyle = TextStyle(color = MyColors.HudText, fontSize = 14.sp),
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = HudBlue,
-                unfocusedBorderColor = HudText.copy(alpha = 0.4f),
-                focusedTextColor = HudText,
-                unfocusedTextColor = HudText,
-                unfocusedLabelColor = HudBlue,
-                focusedLabelColor = HudBlue
+                focusedBorderColor = MyColors.HudBlue,
+                unfocusedBorderColor = MyColors.HudText.copy(alpha = 0.4f),
+                focusedTextColor = MyColors.HudText,
+                unfocusedTextColor = MyColors.HudText,
+                unfocusedLabelColor = MyColors.HudBlue,
+                focusedLabelColor = MyColors.HudBlue
             ),
             shape = RoundedCornerShape(8.dp)
         )
@@ -167,16 +168,16 @@ fun ProfileContent(
                 onValueChange = { confirmPassword = it },
                 label = { Text("Confirm Password", fontSize = 11.sp) },
                 visualTransformation = PasswordVisualTransformation(),
-                textStyle = TextStyle(color = HudText, fontSize = 14.sp),
+                textStyle = TextStyle(color = MyColors.HudText, fontSize = 14.sp),
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = HudBlue,
-                    unfocusedBorderColor = HudText.copy(alpha = 0.4f),
-                    focusedTextColor = HudText,
-                    unfocusedTextColor = HudText,
-                    unfocusedLabelColor = HudBlue,
-                    focusedLabelColor = HudBlue
+                    focusedBorderColor = MyColors.HudBlue,
+                    unfocusedBorderColor = MyColors.HudText.copy(alpha = 0.4f),
+                    focusedTextColor = MyColors.HudText,
+                    unfocusedTextColor = MyColors.HudText,
+                    unfocusedLabelColor = MyColors.HudBlue,
+                    focusedLabelColor = MyColors.HudBlue
                 ),
                 shape = RoundedCornerShape(8.dp)
             )
@@ -187,7 +188,7 @@ fun ProfileContent(
         if (statusMessage.isNotBlank()) {
             Text(
                 text = statusMessage,
-                color = if (statusMessage.contains("failed", true) || statusMessage.contains("error", true)) Color.Red else HudBlue,
+                color = if (statusMessage.contains("failed", true) || statusMessage.contains("error", true)) Color.Red else MyColors.HudBlue,
                 fontSize = 12.sp,
                 fontFamily = FontFamily.Monospace,
                 modifier = Modifier.padding(bottom = 16.dp)
@@ -199,7 +200,7 @@ fun ProfileContent(
         TextButton(onClick = { onModeChange(!isLoginMode) }) {
             Text(
                 text = if (isLoginMode) "NO_ACCOUNT?_CREATE_NEW_PROFILE" else "ALREADY_REGISTERED?_LOGIN",
-                color = HudBlue,
+                color = MyColors.HudBlue,
                 fontSize = 12.sp,
                 fontFamily = FontFamily.Monospace
             )

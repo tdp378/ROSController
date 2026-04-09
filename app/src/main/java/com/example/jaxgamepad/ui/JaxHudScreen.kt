@@ -43,18 +43,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.jaxgamepad.Black
 import com.example.jaxgamepad.R
 import com.example.jaxgamepad.RobotMode
 import kotlin.math.min
 import kotlin.math.sqrt
+import com.example.jaxgamepad.ui.theme.MyColors
 
 // Enum for LED and Telemetry selection
 enum class HudIndicator { ROS_LINK, MOTORS, IMU, CAMERA, BATTERY, CPU }
 
-private val HudText = Color(0xFFE6EEF5)
-private val HudBlue = Color(0xFF00E5FF)
-private val HudBlueD = Color(0xFF16589f)
+
+
 private val HudBorder = Color(0xFF27719A)
 private val HudGlow = Color(0xFF4DB9DB)
 private val HudRed = Color(0xFFFF3D00)
@@ -108,13 +107,13 @@ fun JaxHudScreen(
     val activeLedList = remember(enabledIndicators, isLinked, motorsActive, imuActive, cameraActive) {
         mutableListOf<Triple<String, Color, Boolean>>().apply {
             if (enabledIndicators.contains(HudIndicator.ROS_LINK))
-                add(Triple("ROS LINK", if (isLinked) Green else HudBlueD, isLinked))
+                add(Triple("ROS LINK", if (isLinked) Green else MyColors.HudBlueD, isLinked))
             if (enabledIndicators.contains(HudIndicator.MOTORS))
-                add(Triple("MOTORS", if (motorsActive) Green else HudBlueD, motorsActive))
+                add(Triple("MOTORS", if (motorsActive) Green else MyColors.HudBlueD, motorsActive))
             if (enabledIndicators.contains(HudIndicator.IMU))
-                add(Triple("IMU", if (imuActive) Green else HudBlueD, imuActive))
+                add(Triple("IMU", if (imuActive) Green else MyColors.HudBlueD, imuActive))
             if (enabledIndicators.contains(HudIndicator.CAMERA))
-                add(Triple("CAMERA", if (cameraActive) Green else HudBlueD, cameraActive))
+                add(Triple("CAMERA", if (cameraActive) Green else MyColors.HudBlueD, cameraActive))
         }
     }
 
@@ -198,7 +197,7 @@ fun JaxHudScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(1.7f)
-                            .border(1.dp, HudBlueD.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                            .border(1.dp, MyColors.HudBlueD.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                             .clip(RoundedCornerShape(12.dp)),
                         color = Color.Black
                     ) {
@@ -221,9 +220,9 @@ fun JaxHudScreen(
                     ) {
                         val telemetryItems = mutableListOf<Triple<String, Color, Boolean>>().apply {
                             if (enabledIndicators.contains(HudIndicator.BATTERY))
-                                add(Triple("BATTERY $batteryPercent%", if (!isLinked) HudBlueD else if (batteryPercent < 20) HudRed else Green, isLinked))
+                                add(Triple("BATTERY $batteryPercent%", if (!isLinked) MyColors.HudBlueD else if (batteryPercent < 20) HudRed else Green, isLinked))
                             if (enabledIndicators.contains(HudIndicator.CPU))
-                                add(Triple("CPU TEMP $cpuTemp°", if (!isLinked) HudBlueD else if (cpuTemp > 75) HudRed else Green, isLinked))
+                                add(Triple("CPU TEMP $cpuTemp°", if (!isLinked) MyColors.HudBlueD else if (cpuTemp > 75) HudRed else Green, isLinked))
                         }
                         StatusGroup(items = telemetryItems, alignEnd = true)
                     }
@@ -343,7 +342,7 @@ fun HudVerticalSlider(
     ) {
         Text(
             text = label,
-            color = if (enabled) HudText else HudText.copy(alpha = 0.4f),
+            color = if (enabled) MyColors.HudText else MyColors.HudText.copy(alpha = 0.4f),
             fontSize = 9.sp,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Bold,
@@ -406,7 +405,7 @@ fun HudVerticalSlider(
                         .background(Color.Black.copy(alpha = 0.25f))
                         .border(
                             1.dp,
-                            HudBlueD.copy(alpha = 0.35f),
+                            MyColors.HudBlueD.copy(alpha = 0.35f),
                             RoundedCornerShape(12.dp)
                         )
                 )
@@ -417,7 +416,7 @@ fun HudVerticalSlider(
                         .fillMaxHeight()
                         .width(railWidth)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(HudBlueD.copy(alpha = 0.18f))
+                        .background(MyColors.HudBlueD.copy(alpha = 0.18f))
                 )
 
                 Box(
@@ -429,9 +428,9 @@ fun HudVerticalSlider(
                         .background(
                             Brush.verticalGradient(
                                 colors = listOf(
-                                    HudBlueD.copy(alpha = 0.20f),
-                                    HudBlueD.copy(alpha = 0.55f),
-                                    HudBlueD.copy(alpha = 0.95f)
+                                    MyColors.HudBlueD.copy(alpha = 0.20f),
+                                    MyColors.HudBlueD.copy(alpha = 0.55f),
+                                    MyColors.HudBlueD.copy(alpha = 0.95f)
                                 )
                             )
                         )
@@ -443,7 +442,7 @@ fun HudVerticalSlider(
                         .offset(y = thumbOffsetDp)
                         .size(width = thumbWidth + 8.dp, height = thumbHeight + 8.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(HudBlueD.copy(alpha = 0.15f))
+                        .background(MyColors.HudBlueD.copy(alpha = 0.15f))
                 )
 
                 Box(
@@ -456,21 +455,21 @@ fun HudVerticalSlider(
                             Brush.verticalGradient(
                                 colors = listOf(
                                     Color(0xFF1C3E5A),
-                                    HudBlueD,
+                                    MyColors.HudBlueD,
                                     Color(0xFF0E6FB3)
                                 )
                             )
                         )
                         .border(
                             1.dp,
-                            HudText.copy(alpha = 0.35f),
+                            MyColors.HudText.copy(alpha = 0.35f),
                             RoundedCornerShape(6.dp)
                         )
                 )
 
                 Text(
                     text = String.format("%.2f", clampedValue),
-                    color = HudText.copy(alpha = 0.85f),
+                    color = MyColors.HudText.copy(alpha = 0.85f),
                     fontSize = 8.sp,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
@@ -533,7 +532,7 @@ private fun HudTopBar(
         Spacer(Modifier.weight(1f))
         Text(
             robotName.uppercase(),
-            color = HudText,
+            color = MyColors.HudText,
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold,
             fontFamily = FontFamily.Monospace,
@@ -556,7 +555,7 @@ private fun HudTopBar(
         ) {
             Text(
                 text = "SESSION: $sessionTimeText",
-                color = HudText.copy(alpha = 0.9f),
+                color = MyColors.HudText.copy(alpha = 0.9f),
                 fontSize = 12.sp,
                 fontFamily = FontFamily.Monospace,
                 modifier = Modifier.padding(vertical = 8.dp)
@@ -566,7 +565,7 @@ private fun HudTopBar(
         // CENTER: ROS STATUS
         Text(
             text = if (isLinked) "ROS LINK: ONLINE" else "ROS LINK: OFFLINE",
-            color = if (isLinked) HudText else Color(0xFFFF3B30),
+            color = if (isLinked) MyColors.HudText else Color(0xFFFF3B30),
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace,
@@ -604,7 +603,7 @@ private fun StatusRow(label: String, color: Color, pulse: Boolean, alignEnd: Boo
         if (alignEnd) {
             Text(
                 text = label,
-                color = HudText,
+                color = MyColors.HudText,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Medium,
                 fontFamily = FontFamily.Monospace,
@@ -617,7 +616,7 @@ private fun StatusRow(label: String, color: Color, pulse: Boolean, alignEnd: Boo
             Spacer(Modifier.width(6.dp))
             Text(
                 text = label,
-                color = HudText,
+                color = MyColors.HudText,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Medium,
                 fontFamily = FontFamily.Monospace,
@@ -664,7 +663,7 @@ private fun ModeButton(
     Surface(
         onClick = onClick,
         modifier = modifier.clip(RoundedCornerShape(8.dp)),
-        color = if (selected) HudBlueD.copy(alpha = 0.5f) else Color(0x44000000),
+        color = if (selected) MyColors.HudBlueD.copy(alpha = 0.5f) else Color(0x44000000),
         shape = RoundedCornerShape(8.dp)
     ) {
         Box(
@@ -672,7 +671,7 @@ private fun ModeButton(
                 .fillMaxSize()
                 .border(
                     1.dp,
-                    if (selected) HudBlueD else HudBlueD.copy(alpha = 0.4f),
+                    if (selected) MyColors.HudBlueD else MyColors.HudBlueD.copy(alpha = 0.4f),
                     RoundedCornerShape(8.dp)
                 )
                 .padding(horizontal = 4.dp, vertical = 4.dp),
@@ -689,7 +688,7 @@ private fun TextModeButton(label: String, selected: Boolean, onClick: () -> Unit
             .height(52.dp)
             .width(90.dp)
             .clip(RoundedCornerShape(8.dp)),
-        color = if (selected) HudBlueD.copy(alpha = 0.3f) else Color(0x44000000),
+        color = if (selected) MyColors.HudBlueD.copy(alpha = 0.3f) else Color(0x44000000),
         shape = RoundedCornerShape(8.dp)
     ) {
         Box(
@@ -697,7 +696,7 @@ private fun TextModeButton(label: String, selected: Boolean, onClick: () -> Unit
                 .fillMaxSize()
                 .border(
                     1.dp,
-                    if (selected) HudBlueD else HudBlueD.copy(alpha = 0.4f),
+                    if (selected) MyColors.HudBlueD else MyColors.HudBlueD.copy(alpha = 0.4f),
                     RoundedCornerShape(8.dp)
                 )
                 .padding(horizontal = 6.dp, vertical = 6.dp),
@@ -776,32 +775,32 @@ fun HudJoystick(
             val c = Offset(size.width / 2f, size.height / 2f)
             val outerR = size.width * 0.38f
             val innerR = outerR * 0.28f
-            drawCircle(color = HudBlueD.copy(alpha = 0.9f), radius = outerR, center = c, style = Stroke(width = 3.dp.toPx()))
-            drawCircle(color = Black.copy(alpha = 0.5f), radius = outerR, center = c)
+            drawCircle(color = MyColors.HudBlueD.copy(alpha = 0.9f), radius = outerR, center = c, style = Stroke(width = 3.dp.toPx()))
+            drawCircle(color = MyColors.Black.copy(alpha = 0.5f), radius = outerR, center = c)
             rotate(45f, c) {
                 drawLine(
-                    color = HudBlueD.copy(alpha = 0.9f),
+                    color = MyColors.HudBlueD.copy(alpha = 0.9f),
                     start = Offset(c.x - outerR, c.y),
                     end = Offset(c.x + outerR, c.y),
                     strokeWidth = 2.dp.toPx()
                 )
                 drawLine(
-                    color = HudBlueD.copy(alpha = 0.9f),
+                    color = MyColors.HudBlueD.copy(alpha = 0.9f),
                     start = Offset(c.x, c.y - outerR),
                     end = Offset(c.x, c.y + outerR),
                     strokeWidth = 2.dp.toPx()
                 )
             }
             drawCircle(color = Color(0xFF0B141D), radius = innerR, center = c)
-            drawCircle(color = HudBlueD.copy(alpha = 0.8f), radius = innerR, center = c, style = Stroke(width = 2.dp.toPx()))
+            drawCircle(color = MyColors.HudBlueD.copy(alpha = 0.8f), radius = innerR, center = c, style = Stroke(width = 2.dp.toPx()))
             val knobCenter = Offset(c.x + dragOffset.x * (outerR * 0.8f), c.y + dragOffset.y * (outerR * 0.8f))
-            drawCircle(color = HudBlueD.copy(alpha = 0.9f), radius = 10.dp.toPx(), center = knobCenter)
-            drawCircle(color = HudBlueD.copy(alpha = 0.3f), radius = 5.dp.toPx(), center = knobCenter, style = Stroke(width = 30.dp.toPx()))
+            drawCircle(color = MyColors.HudBlueD.copy(alpha = 0.9f), radius = 10.dp.toPx(), center = knobCenter)
+            drawCircle(color = MyColors.HudBlueD.copy(alpha = 0.3f), radius = 5.dp.toPx(), center = knobCenter, style = Stroke(width = 30.dp.toPx()))
         }
         Icon(
             imageVector = Icons.Default.KeyboardArrowUp,
             contentDescription = null,
-            tint = HudText,
+            tint = MyColors.HudText,
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .padding(top = 30.dp)
@@ -810,7 +809,7 @@ fun HudJoystick(
         Icon(
             imageVector = Icons.Default.KeyboardArrowDown,
             contentDescription = null,
-            tint = HudText,
+            tint = MyColors.HudText,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 30.dp)
@@ -819,7 +818,7 @@ fun HudJoystick(
         Icon(
             imageVector = Icons.Default.KeyboardArrowLeft,
             contentDescription = null,
-            tint = HudText,
+            tint = MyColors.HudText,
             modifier = Modifier
                 .align(Alignment.CenterStart)
                 .padding(start = 30.dp)
@@ -828,7 +827,7 @@ fun HudJoystick(
         Icon(
             imageVector = Icons.Default.KeyboardArrowRight,
             contentDescription = null,
-            tint = HudText,
+            tint = MyColors.HudText,
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .padding(end = 30.dp)

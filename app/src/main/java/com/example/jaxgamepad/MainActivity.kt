@@ -82,631 +82,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.automirrored.filled.Login
 import com.google.firebase.auth.FirebaseAuth
+import com.example.jaxgamepad.ui.theme.MyColors
 
 
-
-
-
-// --- UI Constants ---
-val HudBlue = Color(0xFF0e7edb)
-val HudBorder = Color(0xFF1A3A4A)
-val HudBackground = Color(0xFF050B10)
-val HudSurface = Color(0xFF0D1B26)
-val HudText = Color(0xFFE6EEF5)
-val Black = Color(0xFF000000)
-val TerminalCyan = Color(0xFF8FE9FF)
-
-// --- Network Helper Function ---
-
-
-
-fun saveRobotConfigToFirestore(
-    robot: RobotConfig,
-    onResult: (String) -> Unit = {}
-) {
-    if (robot.isDemoRobot()) {
-        onResult("DEMO MODE - CLOUD SYNC DISABLED")
-        return
-    }
-    val uid = FirebaseAuth.getInstance().currentUser?.uid
-    if (uid.isNullOrBlank()) {
-        onResult("SAVED LOCALLY - SIGN IN TO SYNC")
-        return
-    }
-
-    try {
-        val db = FirebaseFirestore.getInstance()
-
-        val data = hashMapOf(
-            "robotId" to robot.robotId,
-            "ownerUid" to uid,
-            "name" to robot.name,
-            "rosAddress" to robot.rosAddress,
-            "videoUrl" to robot.videoUrl,
-            "thumbnailPath" to robot.thumbnailPath,
-            "invertForwardBack" to robot.invertForwardBack,
-            "invertStrafe" to robot.invertStrafe,
-            "invertHeight" to robot.invertHeight,
-            "invertTurn" to robot.invertTurn,
-            "enabledIndicators" to robot.enabledIndicators,
-            "totalUptimeSeconds" to robot.totalUptimeSeconds,
-            "totalDistanceMeters" to robot.totalDistanceMeters,
-            "updatedAt" to System.currentTimeMillis(),
-            "cmdVelTopic_name" to robot.cmdVelTopic?.name,
-            "cmdVelTopic_type" to robot.cmdVelTopic?.type,
-            "modeTopic_name" to robot.modeTopic?.name,
-            "modeTopic_type" to robot.modeTopic?.type,
-            "batteryTopic_name" to robot.batteryTopic?.name,
-            "batteryTopic_type" to robot.batteryTopic?.type,
-            "imuTopic_name" to robot.imuTopic?.name,
-            "imuTopic_type" to robot.imuTopic?.type,
-            "odomTopic_name" to robot.odomTopic?.name,
-            "odomTopic_type" to robot.odomTopic?.type,
-            "jointStateTopic_name" to robot.jointStateTopic?.name,
-            "jointStateTopic_type" to robot.jointStateTopic?.type,
-            "modes" to robot.modes.map {
-                hashMapOf(
-                    "label" to it.label,
-                    "command" to it.command
-                )
-            }
-        )
-
-        db.collection("users")
-            .document(uid)
-            .collection("robots")
-            .document(robot.robotId)
-            .set(data)
-            .addOnSuccessListener {
-                Log.d("FIRESTORE_ROBOT", "Saved robot: ${robot.name} (${robot.robotId})")
-                onResult("- CLOUD SYNC SUCCESSFUL")
-            }
-            .addOnFailureListener { e ->
-                Log.e("FIRESTORE_ROBOT", "Failed saving robot", e)
-                onResult("CLOUD SYNC FAILED\n${e.message ?: "Unknown error"}")
-            }
-    } catch (e: Exception) {
-        Log.e("FIRESTORE_ROBOT", "Exception saving robot", e)
-        onResult("CLOUD SYNC FAILED\n${e.message ?: "Unknown error"}")
-    }
-}
-
-fun deleteRobotConfigFromFirestore(
-    robot: RobotConfig,
-    onResult: (String) -> Unit = {}
-) {
-    val uid = FirebaseAuth.getInstance().currentUser?.uid
-    if (uid.isNullOrBlank()) {
-        onResult("REMOVED LOCALLY")
-        return
-    }
-
-    try {
-        FirebaseFirestore.getInstance()
-            .collection("users")
-            .document(uid)
-            .collection("robots")
-            .document(robot.robotId)
-            .delete()
-            .addOnSuccessListener {
-                Log.d("FIRESTORE_ROBOT", "Deleted robot: ${robot.name} (${robot.robotId})")
-                onResult("REMOVED LOCAL + CLOUD")
-            }
-            .addOnFailureListener { e ->
-                Log.e("FIRESTORE_ROBOT", "Failed deleting robot", e)
-                onResult("REMOVED LOCAL - CLOUD DELETE FAILED\n${e.message ?: "Unknown error"}")
-            }
-    } catch (e: Exception) {
-        Log.e("FIRESTORE_ROBOT", "Exception deleting robot", e)
-        onResult("REMOVED LOCAL - CLOUD DELETE FAILED\n${e.message ?: "Unknown error"}")
-    }
-}
-
-private fun syncRobotsToFirestoreForSignedInUser(robots: List<RobotConfig>) {
-    if (robots.isEmpty()) return
-    val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
-    robots.filterNot { it.isDemoRobot() }.forEach { robot ->
-        saveRobotConfigToFirestore(robot.copy(ownerUid = uid))
-    }
-}
-
-private fun fetchRobotsFromFirestoreForSignedInUser(
-    uid: String,
-    onResult: (List<RobotConfig>) -> Unit,
-    onFailure: (Exception) -> Unit = {}
-) {
-    FirebaseFirestore.getInstance()
-        .collection("users")
-        .document(uid)
-        .collection("robots")
-        .get()
-        .addOnSuccessListener { snapshot ->
-            try {
-                val robots = snapshot.documents.mapNotNull { doc ->
-                    val robotId = doc.getString("robotId")?.takeIf { it.isNotBlank() } ?: doc.id
-                    val name = doc.getString("name")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-
-                    val modes = (doc.get("modes") as? List<*>)
-                        ?.mapNotNull { modeEntry ->
-                            val modeMap = modeEntry as? Map<*, *> ?: return@mapNotNull null
-                            val label = modeMap["label"] as? String ?: return@mapNotNull null
-                            val command = modeMap["command"] as? String ?: return@mapNotNull null
-                            if (label.isBlank() || command.isBlank()) null else RobotMode(label, command)
-                        }
-                        ?: emptyList()
-
-                    val enabledIndicators = (doc.get("enabledIndicators") as? List<*>)
-                        ?.mapNotNull { it as? String }
-                        ?.takeIf { it.isNotEmpty() }
-                        ?: HudIndicator.entries.map { it.name }
-
-                    fun topicBinding(prefix: String): TopicBinding? {
-                        val topicName = doc.getString("${prefix}_name")?.trim().orEmpty()
-                        val topicType = doc.getString("${prefix}_type")?.trim().orEmpty()
-                        return if (topicName.isNotBlank() && topicType.isNotBlank()) {
-                            TopicBinding(name = topicName, type = topicType)
-                        } else {
-                            null
-                        }
-                    }
-
-                    RobotConfig(
-                        name = name,
-                        rosAddress = doc.getString("rosAddress") ?: "",
-                        videoUrl = doc.getString("videoUrl") ?: "",
-                        thumbnailPath = doc.getString("thumbnailPath"),
-                        cmdVelTopic = topicBinding("cmdVelTopic"),
-                        modeTopic = topicBinding("modeTopic"),
-                        batteryTopic = topicBinding("batteryTopic"),
-                        imuTopic = topicBinding("imuTopic"),
-                        odomTopic = topicBinding("odomTopic"),
-                        jointStateTopic = topicBinding("jointStateTopic"),
-                        modes = modes,
-                        enabledIndicators = enabledIndicators,
-                        totalUptimeSeconds = doc.getLong("totalUptimeSeconds") ?: 0L,
-                        totalDistanceMeters = doc.getDouble("totalDistanceMeters") ?: 0.0,
-                        invertForwardBack = doc.getBoolean("invertForwardBack") ?: false,
-                        invertStrafe = doc.getBoolean("invertStrafe") ?: false,
-                        invertHeight = doc.getBoolean("invertHeight") ?: false,
-                        invertTurn = doc.getBoolean("invertTurn") ?: false,
-                        robotId = robotId,
-                        ownerUid = uid
-                    )
-                }
-                onResult(robots)
-            } catch (e: Exception) {
-                onFailure(e)
-            }
-        }
-        .addOnFailureListener { e ->
-            onFailure(e)
-        }
-}
-
-@Composable
-fun AccountStatusDialog(
-    show: Boolean,
-    user: com.google.firebase.auth.FirebaseUser?,
-    onDismiss: () -> Unit,
-    onGoogleLogin: () -> Unit,
-    onSignOut: () -> Unit
-) {
-    if (!show) return
-
-    var showLoginForm by remember { mutableStateOf(false) }
-    var isLoginMode by remember { mutableStateOf(true) }
-    var submitTrigger by remember { mutableStateOf(0) }
-    var isLoading by remember { mutableStateOf(false) }
-    
-    val isSignedIn = user != null
-    val title = if (showLoginForm) "SYSTEM_AUTHENTICATION" else if (isSignedIn) "AUTH_SUCCESSFUL" else "GUEST_ACCESS"
-
-    val confirmText = if (showLoginForm && !isSignedIn) {
-        if (isLoading) "PROCESSING..." else if (isLoginMode) "LOGIN ▶" else "CREATE ▶"
-    } else ""
-
-    CyberDialog(
-        show = show,
-        title = title,
-        confirmText = confirmText,
-        onConfirm = {
-            if (showLoginForm && !isSignedIn && !isLoading) {
-                submitTrigger++
-            }
-        },
-        onDismiss = {
-            showLoginForm = false
-            onDismiss()
-        }
-    ) {
-        if (showLoginForm && !isSignedIn) {
-            ProfileContent(
-                onBack = { showLoginForm = false },
-                isLoginMode = isLoginMode,
-                onModeChange = { isLoginMode = it },
-                submitTrigger = submitTrigger,
-                onLoadingChange = { isLoading = it },
-                onProfileCreated = {
-                    showLoginForm = false
-                }
-            )
-        } else {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // User Info Section
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Default.AccountCircle,
-                        contentDescription = null,
-                        tint = HudBlue,
-                        modifier = Modifier.size(48.dp)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = if (isSignedIn) "IDENTIFIED: ${user?.email}" else "STATUS: UNREGISTERED",
-                        color = HudText,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    if (!isSignedIn) {
-                        Text(
-                            text = "Cloud synchronization disabled.",
-                            color = HudText.copy(alpha = 0.5f),
-                            fontSize = 11.sp
-                        )
-                    }
-                }
-
-                HorizontalDivider(color = HudBlue.copy(alpha = 0.2f), thickness = 1.dp)
-
-                if (!isSignedIn) {
-                    // Button to show the Login/Register form inside the dialog
-                    CyberButton(
-                        onClick = {
-                            showLoginForm = true
-                        },
-                        modifier = Modifier.fillMaxWidth().height(48.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .border(1.dp, HudBlue.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
-                                .background(HudBlue.copy(alpha = 0.1f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                "LOGIN / REGISTER",
-                                color = HudBlue,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp,
-                                letterSpacing = 1.sp
-                            )
-                        }
-                    }
-
-                    // "OR" separator
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        HorizontalDivider(modifier = Modifier.weight(1f), color = HudBlue.copy(alpha = 0.2f))
-                        Text(
-                            text = " OR ",
-                            color = HudText.copy(alpha = 0.4f),
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 12.dp)
-                        )
-                        HorizontalDivider(modifier = Modifier.weight(1f), color = HudBlue.copy(alpha = 0.2f))
-                    }
-
-                    // Google Login Icon (Clickable Image)
-                    Box(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.05f))
-                            .border(0.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                            .clickable { onGoogleLogin() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Image(
-                            painter = painterResource(id = R.drawable.android_dark),
-                            contentDescription = "Continue with Google",
-                            modifier = Modifier.size(48.dp)
-                        )
-                    }
-                } else {
-                    // Logout Button
-                    CyberButton(
-                        onClick = {
-                            onSignOut()
-                            onDismiss()
-                        },
-                        modifier = Modifier.fillMaxWidth().height(45.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .border(1.dp, Color.Red.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                                .background(Color.Red.copy(alpha = 0.05f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("TERMINATE SESSION (LOGOUT)", color = Color.Red, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun CyberTerminalBox(
-    modifier: Modifier = Modifier,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Box(modifier = modifier.fillMaxWidth().aspectRatio(1.8f)) {
-        Image(
-            painter = painterResource(R.drawable.terminal_box),
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Fit
-        )
-        Column(
-            modifier = Modifier
-                .matchParentSize()
-                .padding(start = 54.dp, top = 26.dp, end = 50.dp, bottom = 22.dp),
-            content = content
-        )
-    }
-}
-
-
-@Composable
-fun HelpDialog(
-    show: Boolean,
-    onDismiss: () -> Unit
-) {
-    CyberDialog(
-        show = show,
-        title = "SYSTEM HELP",
-        confirmText = "",
-        onConfirm = {},
-        onDismiss = onDismiss
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-
-
-            HelpSection("MINIMUM REQUIREMENTS") {
-                HelpBullet("rosbridge websocket (ws://<ip>:9090)")
-                HelpBullet("geometry_msgs/Twist (motion)")
-                HelpBullet("std_msgs/String (mode)")
-            }
-
-            HelpSection("ADD NEW ROBOT") {
-                HelpNote("Robot Tab")
-
-                HelpBullet("Enter robot name")
-                HelpBullet("Enter rosbridge IP:port (192.168.x.x:9090)")
-                HelpBullet("Enter video stream URL (optional)")
-                HelpBullet("Upload robot image (optional)")
-                HelpBullet("Axis settings should stay normal unless the controller is reversed")
-                HelpNote("Topics Tab")
-                HelpBullet("Launch rosbridge on robot")
-                HelpBullet("Tap auto discover topics")
-                HelpBullet("Use dropdowns to verify topics assigned")
-                HelpBullet("Most important is cmd_vel and mode topic")
-                HelpNote("Modes Tab")
-                HelpBullet("Verify configured modes match what the robot expects")
-                HelpBullet("Add or remove modes as needed")
-                HelpBullet("Save robot configuration")
-            }
-
-            HelpSection("CONTROLS") {
-                HelpBullet("Left stick -> movement")
-                HelpBullet("Right stick -> turn/body")
-                HelpBullet("Left slider -> height")
-                HelpBullet("Right slider -> speed")
-            }
-
-
-            HelpSection("TROUBLESHOOTING") {
-                HelpBullet("No movement -> check cmd_vel topic. Your ROS node must be configured to use geometry_msgs/Twist ")
-                HelpBullet("Modes fail -> check mode topic. Your ROS node must be configured to use std_msgs/String")
-                HelpBullet("No topics listed when taping auto discover topics -> check that rosbridge is running and ensure network is connected")
-                HelpBullet("Wrong motion -> axis mismatch. Choose inverted on the incorrect axis in setup")
-            }
-
-
-        }
-    }
-}
-
-@Composable
-fun HelpSection(
-    title: String,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(
-            text = title,
-            color = HudBlue,
-            fontWeight = FontWeight.Bold,
-            fontSize = 13.sp,
-            letterSpacing = 1.sp
-        )
-        content()
-    }
-}
-
-@Composable
-fun HelpBullet(text: String) {
-    Text(
-        text = "• $text",
-        color = HudText,
-        fontSize = 13.sp,
-        lineHeight = 18.sp
-    )
-}
-
-@Composable
-fun HelpNote(text: String) {
-    Text(
-        text = text,
-        color = HudText,
-        fontSize = 13.sp,
-        lineHeight = 18.sp,
-        textDecoration = TextDecoration.Underline
-
-
-    )
-}
-
-@Composable
-fun CyberDialog(
-    show: Boolean,
-    title: String,
-    confirmText: String = "LAUNCH ▶",
-    useTerminalLook: Boolean = false,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    if (!show) return
-
-    Dialog(onDismissRequest = onDismiss) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp)
-                .shadow(
-                    elevation = 20.dp,
-                    shape = RoundedCornerShape(16.dp),
-                    ambientColor = HudBlue, // Explicitly named to avoid type mismatch
-                    spotColor = HudBlue    // Explicitly named
-                )
-                .border(
-                    width = 1.5.dp,
-                    brush = Brush.linearGradient(
-                        listOf(HudBlue, Color(0xFF008CFF), HudBlue)
-                    ),
-                    shape = RoundedCornerShape(16.dp)
-                )
-                .background(
-                    brush = Brush.verticalGradient(
-                        listOf(
-                            Color(0xFF020617).copy(alpha = 0.95f),
-                            Color(0xFF020617).copy(alpha = 0.88f)
-                        )
-                    ),
-                    shape = RoundedCornerShape(16.dp)
-                )
-                .padding(10.dp)
-        ) {
-            // ... rest of dialog content remains the same
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 700.dp)
-            ) {
-                Text(
-                    text = title,
-                    color = HudText,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    letterSpacing = 2.sp
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Column(
-                    modifier = Modifier
-                        .weight(1f, fill = false)
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    if (useTerminalLook) {
-                        CyberTerminalBox { content() }
-                    } else {
-                        content()
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("DISMISS", color = HudText.copy(alpha = 0.75f))
-                    }
-
-                    if (confirmText.isNotEmpty()) {
-                        Spacer(modifier = Modifier.width(12.dp))
-                        CyberButton(
-                            onClick = onConfirm,
-                            modifier = Modifier.height(35.dp).width(130.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .border(1.dp, HudBlue, RoundedCornerShape(10.dp))
-                                    .background(HudBlue.copy(alpha = 0.10f), RoundedCornerShape(10.dp)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(confirmText, color = HudBlue, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun CyberButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    content: @Composable BoxScope.() -> Unit
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val haptic = LocalHapticFeedback.current
-
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed && enabled) 0.96f else 1f,
-        animationSpec = tween(durationMillis = 90),
-        label = "btn_scale"
-    )
-
-    Box(
-        modifier = modifier
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-            .alpha(if (enabled) 1f else 0.5f)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                enabled = enabled,
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onClick()
-                }
-            ),
-        contentAlignment = Alignment.Center,
-        content = content
-    )
-}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -749,8 +127,8 @@ fun GlobalTopBar(onOpenAccount: () -> Unit, onOpenHelp: () -> Unit) {
             Box(
                 modifier = Modifier
                     .size(32.dp)
-                    .background(HudBlue.copy(alpha = 0.15f), CircleShape)
-                    .border(1.dp, HudBlue.copy(alpha = 0.4f), CircleShape)
+                    .background(MyColors.HudBlue.copy(alpha = 0.15f), CircleShape)
+                    .border(1.dp, MyColors.HudBlue.copy(alpha = 0.4f), CircleShape)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -761,7 +139,7 @@ fun GlobalTopBar(onOpenAccount: () -> Unit, onOpenHelp: () -> Unit) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Help,
                     contentDescription = "Help",
-                    tint = HudBlue,
+                    tint = MyColors.HudBlue,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -770,8 +148,8 @@ fun GlobalTopBar(onOpenAccount: () -> Unit, onOpenHelp: () -> Unit) {
             Box(
                 modifier = Modifier
                     .size(32.dp)
-                    .background(HudBlue.copy(alpha = 0.15f), CircleShape)
-                    .border(1.dp, HudBlue.copy(alpha = 0.4f), CircleShape)
+                    .background(MyColors.HudBlue.copy(alpha = 0.15f), CircleShape)
+                    .border(1.dp, MyColors.HudBlue.copy(alpha = 0.4f), CircleShape)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -782,7 +160,7 @@ fun GlobalTopBar(onOpenAccount: () -> Unit, onOpenHelp: () -> Unit) {
                 Icon(
                     imageVector = Icons.Default.Person,
                     contentDescription = "Profile",
-                    tint = HudBlue,
+                    tint = MyColors.HudBlue,
                     modifier = Modifier.size(20.dp) // Smaller icon
                 )
             }
@@ -1345,7 +723,7 @@ fun JaxDriverScreen(
                 } else {
                     "ROS link is offline. Link lost at ${networkInfo.second}."
                 },
-                color = HudText,
+                color = MyColors.HudText,
                 fontSize = 14.sp
             )
 
@@ -1474,15 +852,15 @@ fun RobotSetupScreen(
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 "Minimum Robot Requirements:",
-                color = HudBlue,
+                color = MyColors.HudBlue,
                 fontWeight = FontWeight.Bold,
                 fontSize = 14.sp
             )
-            Text("• Run robridge - ws://192.168.x.x:9090", color = HudText, fontSize = 13.sp)
-            Text("• Motion topic using - geometry_msgs/Twist", color = HudText, fontSize = 13.sp)
-            Text("• Mode topic using - std_msgs/String", color = HudText, fontSize = 13.sp)
-            Text("Optional:", color = HudBlue, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-            Text("• MJPEG stream for video support", color = HudText, fontSize = 13.sp)
+            Text("• Run robridge - ws://192.168.x.x:9090", color = MyColors.HudText, fontSize = 13.sp)
+            Text("• Motion topic using - geometry_msgs/Twist", color = MyColors.HudText, fontSize = 13.sp)
+            Text("• Mode topic using - std_msgs/String", color = MyColors.HudText, fontSize = 13.sp)
+            Text("Optional:", color = MyColors.HudBlue, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text("• MJPEG stream for video support", color = MyColors.HudText, fontSize = 13.sp)
         }
     }
 
@@ -1500,7 +878,7 @@ fun RobotSetupScreen(
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
                     text = "Are you sure you want to purge the configuration for '${robotToDelete?.name}' from the local database?",
-                    color = HudText,
+                    color = MyColors.HudText,
                     fontSize = 14.sp
                 )
 
@@ -1551,7 +929,7 @@ fun RobotSetupScreen(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     text = "- LOCAL SAVE SUCCESSFUL",
-                    color = HudBlue,
+                    color = MyColors.HudBlue,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp
@@ -1559,7 +937,7 @@ fun RobotSetupScreen(
 
                 Text(
                     text = firestoreStatus,
-                    color = if (firestoreStatus.startsWith("CLOUD SYNC FAILED")) Color.Red else HudBlue,
+                    color = if (firestoreStatus.startsWith("CLOUD SYNC FAILED")) Color.Red else MyColors.HudBlue,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp
@@ -1571,7 +949,7 @@ fun RobotSetupScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(HudBackground)
+            .background(MyColors.HudBackground)
 
     ) {
         Image(
@@ -1615,7 +993,7 @@ fun RobotSetupScreen(
                             text = "ADD NEW",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = HudBlue,
+                            color = MyColors.HudBlue,
                             letterSpacing = 1.sp
                         )
 
@@ -1630,14 +1008,14 @@ fun RobotSetupScreen(
                                 }
                             },
                             modifier = Modifier
-                                .background(HudBlue.copy(alpha = 0.1f), CircleShape)
-                                .border(1.dp, HudBlue.copy(alpha = 0.4f), CircleShape)
+                                .background(MyColors.HudBlue.copy(alpha = 0.1f), CircleShape)
+                                .border(1.dp, MyColors.HudBlue.copy(alpha = 0.4f), CircleShape)
                                 .size(36.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Add,
                                 contentDescription = "Add New",
-                                tint = HudBlue
+                                tint = MyColors.HudBlue
                             )
                         }
                     }
@@ -1662,9 +1040,9 @@ fun RobotSetupScreen(
                     if (hasNoUserRobots) {
                         item {
                             Surface(
-                                color = HudBlue.copy(alpha = 0.05f),
+                                color = MyColors.HudBlue.copy(alpha = 0.05f),
                                 shape = RoundedCornerShape(12.dp),
-                                border = BorderStroke(1.dp, HudBlue.copy(alpha = 0.2f)),
+                                border = BorderStroke(1.dp, MyColors.HudBlue.copy(alpha = 0.2f)),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(top = 8.dp)
@@ -1676,14 +1054,14 @@ fun RobotSetupScreen(
                                     Icon(
                                         imageVector = Icons.Default.Info,
                                         contentDescription = null,
-                                        tint = HudBlue,
+                                        tint = MyColors.HudBlue,
                                         modifier = Modifier.size(20.dp)
                                     )
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column {
                                         Text(
                                             text = "SYSTEM NOTIFICATION",
-                                            color = HudBlue,
+                                            color = MyColors.HudBlue,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
                                             letterSpacing = 1.sp
@@ -1691,7 +1069,7 @@ fun RobotSetupScreen(
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(
                                             text = "ROSbot is provided as a sample robot for you to test the UI. Configure your own robot to enable real-time telemetry and motion control.",
-                                            color = HudText.copy(alpha = 0.8f),
+                                            color = MyColors.HudText.copy(alpha = 0.8f),
                                             fontSize = 12.sp,
                                             lineHeight = 16.sp
                                         )
@@ -1799,7 +1177,7 @@ fun RobotSetupScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(
                             text = "Are you sure you want to remove the '$modeName' command from the controller interface?",
-                            color = HudText,
+                            color = MyColors.HudText,
                             fontSize = 14.sp
                         )
                         Text(
@@ -1841,12 +1219,12 @@ fun RobotSetupScreen(
                     TabRow(
                         selectedTabIndex = selectedTabOrStep,
                         containerColor = Color.Transparent,
-                        contentColor = HudBlue,
+                        contentColor = MyColors.HudBlue,
                         indicator = { tabPositions ->
                             if (selectedTabOrStep < tabPositions.size) {
                                 TabRowDefaults.SecondaryIndicator(
                                     modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTabOrStep]),
-                                    color = HudBlue
+                                    color = MyColors.HudBlue
                                 )
                             }
                         },
@@ -1863,7 +1241,7 @@ fun RobotSetupScreen(
                                         text = title,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isEnabled) HudText else HudBlue
+                                        color = if (isEnabled) MyColors.HudText else MyColors.HudBlue
                                     )
                                 }
                             )
@@ -1889,7 +1267,7 @@ fun RobotSetupScreen(
                                         .size(100.dp)
                                         .border(
                                             width = 1.dp,
-                                            color = HudText.copy(alpha = 0.3f),
+                                            color = MyColors.HudText.copy(alpha = 0.3f),
                                             shape = RoundedCornerShape(12.dp)
                                         )
                                         .clickable { imagePickerLauncher.launch("image/*") },
@@ -1917,7 +1295,7 @@ fun RobotSetupScreen(
                                         Icon(
                                             imageVector = Icons.Default.Image,
                                             contentDescription = null,
-                                            tint = HudText.copy(alpha = 0.4f)
+                                            tint = MyColors.HudText.copy(alpha = 0.4f)
                                         )
                                     }
                                 }
@@ -1928,31 +1306,31 @@ fun RobotSetupScreen(
                                 ) {
                                     Text(
                                         text = "UPTIME : ${formatUptime(initial.totalUptimeSeconds)}",
-                                        color = HudText.copy(alpha = .7f),
+                                        color = MyColors.HudText.copy(alpha = .7f),
                                         fontSize = 12.sp,
                                         lineHeight = 14.sp
                                     )
 
                                     Text(
                                         text = "TRAVELED: ${formatDistance(initial.totalDistanceMeters)}",
-                                        color = HudText.copy(alpha = .7f),
+                                        color = MyColors.HudText.copy(alpha = .7f),
                                         fontSize = 12.sp,
                                         lineHeight = 14.sp
                                     )
                                 }
                             }
 
-                            HudTextField(
+                            MyColors.HudTextField(
                                 value = name,
                                 onValueChange = { name = it },
                                 label = "ROBOT NAME *"
                             )
-                            HudTextField(
+                            MyColors.HudTextField(
                                 value = addr,
                                 onValueChange = { addr = it },
                                 label = "ROS BRIDGE IP (IP:PORT) *"
                             )
-                            HudTextField(
+                            MyColors.HudTextField(
                                 value = url,
                                 onValueChange = { url = it },
                                 label = "VIDEO SERVER URL (OPTIONAL)"
@@ -1963,7 +1341,7 @@ fun RobotSetupScreen(
 
                             Text(
                                 text = "AXIS SETTINGS",
-                                color = HudBlue,
+                                color = MyColors.HudBlue,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 1.sp
@@ -2104,7 +1482,7 @@ fun RobotSetupScreen(
                                     text = "ADD MODE",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = HudBlue,
+                                    color = MyColors.HudBlue,
                                     letterSpacing = 1.sp
                                 )
 
@@ -2114,11 +1492,11 @@ fun RobotSetupScreen(
                                         showModeDialog = true
                                     },
                                     modifier = Modifier
-                                        .background(HudBlue.copy(alpha = 0.1f), CircleShape)
-                                        .border(1.dp, HudBlue.copy(alpha = 0.4f), CircleShape)
+                                        .background(MyColors.HudBlue.copy(alpha = 0.1f), CircleShape)
+                                        .border(1.dp, MyColors.HudBlue.copy(alpha = 0.4f), CircleShape)
                                         .size(36.dp)
                                 ) {
-                                    Icon(Icons.Default.Add, null, tint = HudBlue)
+                                    Icon(Icons.Default.Add, null, tint = MyColors.HudBlue)
                                 }
                             }
 
@@ -2270,8 +1648,8 @@ fun DiscoverTopicsButton(
             .fillMaxWidth()
             .height(50.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(HudBlue.copy(alpha = 0.05f))
-            .border(1.dp, HudBlue.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+            .background(MyColors.HudBlue.copy(alpha = 0.05f))
+            .border(1.dp, MyColors.HudBlue.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
             .clickable(enabled = !discovering, onClick = onClick)
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center
@@ -2280,7 +1658,7 @@ fun DiscoverTopicsButton(
             Icon(
                 imageVector = Icons.Default.Sync,
                 contentDescription = null,
-                tint = if (discovering) HudBlue else HudText.copy(alpha = 0.6f),
+                tint = if (discovering) MyColors.HudBlue else MyColors.HudText.copy(alpha = 0.6f),
                 modifier = Modifier
                     .size(20.dp)
                     .rotate(if (discovering) angle else 0f)
@@ -2289,7 +1667,7 @@ fun DiscoverTopicsButton(
             Column {
                 Text(
                     text = "AUTO DISCOVER TOPICS",
-                    color = HudBlue,
+                    color = MyColors.HudBlue,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp
@@ -2297,7 +1675,7 @@ fun DiscoverTopicsButton(
                 if (!status.isNullOrBlank()) {
                     Text(
                         text = status.uppercase(),
-                        color = HudText.copy(alpha = 0.5f),
+                        color = MyColors.HudText.copy(alpha = 0.5f),
                         fontSize = 8.sp,
                         fontWeight = FontWeight.Light
                     )
@@ -2334,7 +1712,7 @@ fun StartMenuScreen(
     ) {
         Text(
             "No active robot links detected. Navigate to Setup to initialize a new hardware profile.",
-            color = HudText,
+            color = MyColors.HudText,
             fontSize = 14.sp
         )
     }
@@ -2388,7 +1766,7 @@ fun StartMenuScreen(
                 ) {
                     Text(
                         text = terminalText,
-                        color = TerminalCyan,
+                        color = MyColors.TerminalCyan,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 10.sp,
                         letterSpacing = 1.sp,
@@ -2470,10 +1848,10 @@ fun RobotSelectionDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
-                        .background(if (isSelected) HudBlue.copy(alpha = 0.1f) else Color.Transparent)
+                        .background(if (isSelected) MyColors.HudBlue.copy(alpha = 0.1f) else Color.Transparent)
                         .border(
                             width = 1.dp,
-                            color = if (isSelected) HudBlue else HudBorder.copy(alpha = 0.3f),
+                            color = if (isSelected) MyColors.HudBlue else MyColors.HudBorder.copy(alpha = 0.3f),
                             shape = RoundedCornerShape(12.dp)
                         )
                         .clickable { selected = robot }
@@ -2484,15 +1862,15 @@ fun RobotSelectionDialog(
                         selected = isSelected,
                         onClick = { selected = robot },
                         colors = RadioButtonDefaults.colors(
-                            selectedColor = HudBlue,
-                            unselectedColor = HudText.copy(alpha = 0.3f)
+                            selectedColor = MyColors.HudBlue,
+                            unselectedColor = MyColors.HudText.copy(alpha = 0.3f)
                         )
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
                         Text(
                             text = robot.name,
-                            color = if (isSelected) HudBlue else HudText,
+                            color = if (isSelected) MyColors.HudBlue else MyColors.HudText,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Medium
                         )
@@ -2504,9 +1882,9 @@ fun RobotSelectionDialog(
         if (selected?.name?.contains("ROSbot", ignoreCase = true) == true) {
             Spacer(modifier = Modifier.height(12.dp))
             Surface(
-                color = HudBlue.copy(alpha = 0.05f),
+                color = MyColors.HudBlue.copy(alpha = 0.05f),
                 shape = RoundedCornerShape(8.dp),
-                border = BorderStroke(1.dp, HudBlue.copy(alpha = 0.2f))
+                border = BorderStroke(1.dp, MyColors.HudBlue.copy(alpha = 0.2f))
             ) {
                 Row(
                     modifier = Modifier.padding(10.dp),
@@ -2515,13 +1893,13 @@ fun RobotSelectionDialog(
                     Icon(
                         imageVector = Icons.Default.Info,
                         contentDescription = null,
-                        tint = HudBlue,
+                        tint = MyColors.HudBlue,
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "NOTE: This is a demo profile to test the UI. Real-time hardware telemetry and video streaming will not be available until a live ROS bridge is configured.",
-                        color = HudText.copy(alpha = 0.7f),
+                        color = MyColors.HudText.copy(alpha = 0.7f),
                         fontSize = 10.sp,
                         lineHeight = 14.sp
                     )
@@ -2543,7 +1921,7 @@ data class TopicDropdownItem(
 
 
 @Composable
-fun HudTextField(value: String, onValueChange: (String) -> Unit, label: String) {
+fun MyColors.HudTextField(value: String, onValueChange: (String) -> Unit, label: String) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
@@ -2551,21 +1929,21 @@ fun HudTextField(value: String, onValueChange: (String) -> Unit, label: String) 
         placeholder = {
             Text(
                 text = "Enter ${label.lowercase()}...",
-                color = HudText.copy(alpha = 0.3f)
+                color = MyColors.HudText.copy(alpha = 0.3f)
             )
         },
-        textStyle = TextStyle(color = HudText, fontSize = 14.sp),
+        textStyle = TextStyle(color = MyColors.HudText, fontSize = 14.sp),
         modifier = Modifier.fillMaxWidth(),
         singleLine = true,
         minLines = 1,
         colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = HudBlue,
-            unfocusedBorderColor = HudText.copy(alpha = 0.4f),
-            focusedTextColor = HudText,
-            unfocusedTextColor = HudText,
-            unfocusedLabelColor = HudBlue,
-            focusedLabelColor = HudBlue,
-            disabledLabelColor = HudBlue
+            focusedBorderColor = MyColors.HudBlue,
+            unfocusedBorderColor = MyColors.HudText.copy(alpha = 0.4f),
+            focusedTextColor = MyColors.HudText,
+            unfocusedTextColor = MyColors.HudText,
+            unfocusedLabelColor = MyColors.HudBlue,
+            focusedLabelColor = MyColors.HudBlue,
+            disabledLabelColor = MyColors.HudBlue
         ),
         shape = RoundedCornerShape(8.dp)
     )
@@ -2577,9 +1955,9 @@ fun AxisSwitchRowDual(
     right: @Composable () -> Unit
 ) {
     Surface(
-        color = HudText.copy(alpha = 0.03f),
+        color = MyColors.HudText.copy(alpha = 0.03f),
         shape = RoundedCornerShape(10.dp),
-        border = BorderStroke(1.dp, HudText.copy(alpha = 0.4f)),
+        border = BorderStroke(1.dp, MyColors.HudText.copy(alpha = 0.4f)),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -2597,7 +1975,7 @@ fun AxisSwitchRowDual(
                 modifier = Modifier
                     .width(1.dp)
                     .fillMaxHeight()
-                    .background(HudText.copy(alpha = 0.1f))
+                    .background(MyColors.HudText.copy(alpha = 0.1f))
             )
 
             Box(modifier = Modifier.weight(1f)) {
@@ -2625,7 +2003,7 @@ fun AxisSwitchCompact(
         ) {
             Text(
                 text = title,
-                color = HudText,
+                color = MyColors.HudText,
                 fontWeight = FontWeight.Bold,
                 fontSize = 11.sp,
                 lineHeight = 11.sp
@@ -2633,7 +2011,7 @@ fun AxisSwitchCompact(
 
             Text(
                 text = if (checked) "INVERTED" else "NORMAL",
-                color = if (checked) HudBlue else HudText.copy(alpha = 0.4f),
+                color = if (checked) MyColors.HudBlue else MyColors.HudText.copy(alpha = 0.4f),
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
                 lineHeight = 9.sp
@@ -2644,12 +2022,12 @@ fun AxisSwitchCompact(
             checked = checked,
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
-                checkedThumbColor = HudBlue,
-                checkedTrackColor = HudBlue.copy(alpha = 0.3f),
+                checkedThumbColor = MyColors.HudBlue,
+                checkedTrackColor = MyColors.HudBlue.copy(alpha = 0.3f),
                 uncheckedThumbColor = Color.DarkGray,
                 uncheckedTrackColor = Color.Black.copy(alpha = 0.4f),
-                uncheckedBorderColor = HudText.copy(alpha = 0.2f),
-                checkedBorderColor = HudText.copy(alpha = 0.2f)
+                uncheckedBorderColor = MyColors.HudText.copy(alpha = 0.2f),
+                checkedBorderColor = MyColors.HudText.copy(alpha = 0.2f)
             ),
             modifier = Modifier.scale(0.6f)
         )
@@ -2675,7 +2053,7 @@ fun AxisSwitchRow(
         ) {
             Text(
                 text = title,
-                color = HudText,
+                color = MyColors.HudText,
                 fontWeight = FontWeight.Bold,
                 fontSize = 11.sp,
                 lineHeight = 12.sp // 👈 tighter text
@@ -2683,7 +2061,7 @@ fun AxisSwitchRow(
 
             Text(
                 text = if (checked) "INVERTED" else "NORMAL",
-                color = if (checked) HudBlue else HudText.copy(alpha = 0.6f),
+                color = if (checked) MyColors.HudBlue else MyColors.HudText.copy(alpha = 0.6f),
                 fontSize = 8.sp,
                 fontWeight = FontWeight.Bold,
                 lineHeight = 9.sp
@@ -2694,8 +2072,8 @@ fun AxisSwitchRow(
             checked = checked,
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
-                checkedThumbColor = HudBlue,
-                checkedTrackColor = HudBlue.copy(alpha = 0.3f),
+                checkedThumbColor = MyColors.HudBlue,
+                checkedTrackColor = MyColors.HudBlue.copy(alpha = 0.3f),
                 uncheckedThumbColor = Color.DarkGray,
                 uncheckedTrackColor = Color.Black.copy(alpha = 0.4f),
                 uncheckedBorderColor = Color.Transparent
@@ -2754,7 +2132,7 @@ fun TopicBindingDropdown(
                 Text(
                     text = placeholder,
                     fontSize = 14.sp,
-                    color = HudText.copy(alpha = 0.3f)
+                    color = MyColors.HudText.copy(alpha = 0.3f)
                 )
             },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
@@ -2763,12 +2141,12 @@ fun TopicBindingDropdown(
                 .fillMaxWidth()
                 .height(60.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                unfocusedBorderColor = HudText.copy(alpha = 0.4f),
-                focusedBorderColor = HudBlue,
-                focusedTextColor = HudText,
-                unfocusedTextColor = HudText,
-                unfocusedLabelColor = HudBlue,
-                focusedLabelColor = HudBlue
+                unfocusedBorderColor = MyColors.HudText.copy(alpha = 0.4f),
+                focusedBorderColor = MyColors.HudBlue,
+                focusedTextColor = MyColors.HudText,
+                unfocusedTextColor = MyColors.HudText,
+                unfocusedLabelColor = MyColors.HudBlue,
+                focusedLabelColor = MyColors.HudBlue
             ),
             shape = RoundedCornerShape(8.dp)
         )
@@ -2777,29 +2155,29 @@ fun TopicBindingDropdown(
             expanded = expanded,
             onDismissRequest = { expanded = false },
             modifier = Modifier
-                .background(HudSurface)
-                .border(1.dp, HudBorder, RoundedCornerShape(4.dp))
+                .background(MyColors.HudSurface)
+                .border(1.dp, MyColors.HudBorder, RoundedCornerShape(4.dp))
         ) {
             DropdownMenuItem(
                 text = {
-                    Text("Not set", color = HudText.copy(alpha = 0.6f))
+                    Text("Not set", color = MyColors.HudText.copy(alpha = 0.6f))
                 },
                 onClick = {
                     onSelected(null)
                     expanded = false
                 },
-                colors = MenuDefaults.itemColors(textColor = HudText)
+                colors = MenuDefaults.itemColors(textColor = MyColors.HudText)
             )
 
             options.forEach { item ->
                 if (item.isHeader) {
                     HorizontalDivider(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                        color = HudBlue.copy(alpha = 0.25f)
+                        color = MyColors.HudBlue.copy(alpha = 0.25f)
                     )
                     Text(
                         text = item.label ?: "",
-                        color = HudBlue,
+                        color = MyColors.HudBlue,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
@@ -2812,12 +2190,12 @@ fun TopicBindingDropdown(
                             Column {
                                 Text(
                                     text = option.name,
-                                    color = HudText,
+                                    color = MyColors.HudText,
                                     fontSize = 14.sp
                                 )
                                 Text(
                                     text = option.type,
-                                    color = HudBlue.copy(alpha = 0.8f),
+                                    color = MyColors.HudBlue.copy(alpha = 0.8f),
                                     fontSize = 10.sp
                                 )
                             }
@@ -2826,7 +2204,7 @@ fun TopicBindingDropdown(
                             onSelected(option)
                             expanded = false
                         },
-                        colors = MenuDefaults.itemColors(textColor = HudText)
+                        colors = MenuDefaults.itemColors(textColor = MyColors.HudText)
                     )
                 }
             }
@@ -2840,9 +2218,9 @@ fun ModeEditorRow(
     onDelete: () -> Unit
 ) {
     Surface(
-        color = HudText.copy(alpha = 0.0f),
+        color = MyColors.HudText.copy(alpha = 0.0f),
         shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, HudText.copy(alpha = 0.3f)),
+        border = BorderStroke(1.dp, MyColors.HudText.copy(alpha = 0.3f)),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -2852,12 +2230,12 @@ fun ModeEditorRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = mode.label,
-                    color = HudText,
+                    color = MyColors.HudText,
                     fontWeight = FontWeight.Bold
                 )
             }
             IconButton(onClick = onEdit) {
-                Icon(Icons.Default.Edit, null, tint = HudText)
+                Icon(Icons.Default.Edit, null, tint = MyColors.HudText)
             }
             IconButton(onClick = onDelete) {
                 Icon(Icons.Default.Delete, null, tint = Color.Red)
@@ -2873,9 +2251,9 @@ fun RobotListItem(
     onDelete: () -> Unit
 ) {
     Surface(
-        color = HudText.copy(alpha = 0.0f),
+        color = MyColors.HudText.copy(alpha = 0.0f),
         shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, HudText.copy(alpha = 0.3f)),
+        border = BorderStroke(1.dp, MyColors.HudText.copy(alpha = 0.3f)),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -2886,7 +2264,7 @@ fun RobotListItem(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(HudBackground)
+                    .background(MyColors.HudBackground)
             ) {
                 if (robot.thumbnailPath == "demo_thumb") {
                     Image(
@@ -2905,13 +2283,13 @@ fun RobotListItem(
                         imageVector = Icons.Default.Image,
                         contentDescription = null,
                         modifier = Modifier.align(Alignment.Center),
-                        tint = HudText.copy(alpha = 0.2f)
+                        tint = MyColors.HudText.copy(alpha = 0.2f)
                     )
                 }
             }
             Text(
                 text = robot.name,
-                color = HudText,
+                color = MyColors.HudText,
                 modifier = Modifier
                     .padding(start = 12.dp)
                     .weight(1f)
@@ -2920,7 +2298,7 @@ fun RobotListItem(
                 Icon(
                     imageVector = Icons.Default.Edit,
                     contentDescription = null,
-                    tint = HudText.copy(alpha = 0.7f)
+                    tint = MyColors.HudText.copy(alpha = 0.7f)
                 )
             }
             IconButton(onClick = onDelete) {
@@ -2991,7 +2369,7 @@ fun VideoFeedContainer(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
             .background(Color.Black)
-            .border(1.dp, HudBorder.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+            .border(1.dp, MyColors.HudBorder.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
     ) {
         videoContent()
 
@@ -3010,27 +2388,27 @@ fun VideoFeedContainer(
                         Icons.Default.VideocamOff
                     },
                     contentDescription = null,
-                    tint = HudBlue.copy(alpha = 0.5f),
+                    tint = MyColors.HudBlue.copy(alpha = 0.5f),
                     modifier = Modifier.size(42.dp)
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = primaryMsg,
-                    color = HudBlue,
+                    color = MyColors.HudBlue,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp
                 )
                 Text(
                     text = secondaryMsg,
-                    color = HudBlue.copy(alpha = 0.6f),
+                    color = MyColors.HudBlue.copy(alpha = 0.6f),
                     fontSize = 8.sp
                 )
                 if (videoUrl.isNotBlank()) {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = videoUrl,
-                        color = HudText.copy(alpha = 0.4f),
+                        color = MyColors.HudText.copy(alpha = 0.4f),
                         fontSize = 8.sp,
                         fontWeight = FontWeight.Light
                     )
@@ -3046,7 +2424,7 @@ fun VideoFeedContainer(
         if (!errorText.isNullOrBlank() && !hatchOpen) {
             Text(
                 text = "VIDEO SYSTEM OFFLINE",
-                color = HudBlue,
+                color = MyColors.HudBlue,
                 modifier = Modifier.align(Alignment.Center),
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold
@@ -3162,100 +2540,6 @@ fun SettingsDialog(
     }
 }
 
-@Composable
-fun SettingsRockerRow(
-    label: String,
-    checked: Boolean,
-    onToggle: (Boolean) -> Unit
-) {
-    Surface(
-        onClick = { onToggle(!checked) },
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(42.dp)
-            .clip(RoundedCornerShape(6.dp)),
-        color = Color.Black.copy(alpha = 0.2f),
-        border = BorderStroke(1.dp, HudBlue.copy(alpha = 0.1f))
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = label,
-                color = if (checked) HudText else Color.Gray,
-                fontSize = 9.sp,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold
-            )
-
-            Switch(
-                checked = checked,
-                onCheckedChange = { onToggle(it) },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = HudBlue,
-                    checkedTrackColor = HudBlue.copy(alpha = 0.3f),
-                    uncheckedThumbColor = Color.DarkGray,
-                    uncheckedTrackColor = Color.Black.copy(alpha = 0.4f),
-                    uncheckedBorderColor = Color.Transparent
-                ),
-                modifier = Modifier.scale(0.6f)
-            )
-        }
-    }
-}
-
-@Composable
-fun IndicatorRockerRow(
-    indicator: HudIndicator,
-    activeIndicators: Set<HudIndicator>,
-    onToggle: (HudIndicator) -> Unit
-) {
-    val isEnabled = activeIndicators.contains(indicator)
-
-    Surface(
-        onClick = { onToggle(indicator) },
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(30.dp)
-            .clip(RoundedCornerShape(6.dp)),
-        color = Color.Black.copy(alpha = 0.2f),
-        border = BorderStroke(1.dp, HudBlue.copy(alpha = 0.1f))
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = indicator.name.replace("_", " "),
-                color = if (isEnabled) HudText else Color.Gray,
-                fontSize = 9.sp,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold
-            )
-
-            Switch(
-                checked = isEnabled,
-                onCheckedChange = null,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = HudBlue,
-                    checkedTrackColor = HudBlue.copy(alpha = 0.3f),
-                    uncheckedThumbColor = Color.DarkGray,
-                    uncheckedTrackColor = Color.Black.copy(alpha = 0.4f),
-                    uncheckedBorderColor = HudText.copy(alpha = 0.2f),
-                    checkedBorderColor = HudText.copy(alpha = 0.2f)
-                ),
-                modifier = Modifier.scale(0.6f)
-            )
-        }
-    }
-}
 
 @Composable
 fun ModeEditDialog(
@@ -3280,12 +2564,12 @@ fun ModeEditDialog(
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
                 text = "ASSIGN LABEL AND COMMAND STRING",
-                color = HudBlue,
+                color = MyColors.HudBlue,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold
             )
-            HudTextField(value = label, onValueChange = { label = it }, label = "LABEL (e.g. WALK)")
-            HudTextField(value = cmd, onValueChange = { cmd = it }, label = "COMMAND (e.g. walk)")
+            MyColors.HudTextField(value = label, onValueChange = { label = it }, label = "LABEL (e.g. WALK)")
+            MyColors.HudTextField(value = cmd, onValueChange = { cmd = it }, label = "COMMAND (e.g. walk)")
         }
     }
 }
