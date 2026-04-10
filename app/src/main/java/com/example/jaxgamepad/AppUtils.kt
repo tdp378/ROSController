@@ -63,8 +63,16 @@ fun getNetworkDetails(context: Context): Pair<String, String> {
 
 fun buildTopicOptions(
     allTopics: List<RosTopicInfo>,
-    preferredTypes: List<String>
+    preferredTypes: List<String>,
+    standardOption: TopicBinding? = null
 ): List<TopicDropdownItem> {
+    val result = mutableListOf<TopicDropdownItem>()
+
+    if (standardOption != null) {
+        result += TopicDropdownItem(label = "Standard", isHeader = true)
+        result += TopicDropdownItem(binding = standardOption)
+    }
+
     val preferred = allTopics
         .filter { it.type in preferredTypes }
         .sortedBy { it.name.lowercase() }
@@ -81,8 +89,6 @@ fun buildTopicOptions(
                 )
             )
         }
-
-    val result = mutableListOf<TopicDropdownItem>()
 
     if (preferred.isNotEmpty()) {
         result += TopicDropdownItem(label = "Recommended", isHeader = true)

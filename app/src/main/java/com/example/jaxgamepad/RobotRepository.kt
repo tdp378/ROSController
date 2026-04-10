@@ -195,7 +195,7 @@ fun buildDemoRobot(ownerUid: String = RobotManager.GUEST_OWNER_UID): RobotConfig
         videoUrl = "http://192.168.1.XX:8080/stream?topic=/camera/image_raw",
         thumbnailPath = "demo_thumb",
         cmdVelTopic = TopicBinding("/cmd_vel", "geometry_msgs/Twist"),
-        modeTopic = TopicBinding("/jax_mode", "std_msgs/String"),
+        modeTopic = TopicBinding("/robot_mode", "std_msgs/String"),
         jointStateTopic = TopicBinding("/joint_states", "sensor_msgs/JointState"),
         modes = listOf(
             RobotMode("STAND", "stand"),

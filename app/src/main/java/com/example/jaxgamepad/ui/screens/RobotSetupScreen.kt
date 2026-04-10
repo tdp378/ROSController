@@ -730,14 +730,22 @@ fun RobotSetupScreen(
                             TopicBindingDropdown(
                                 title = "CMD VEL",
                                 selected = cmdVelTopic,
-                                options = buildTopicOptions(allDiscoveredTopics, listOf("geometry_msgs/msg/Twist")),
+                                options = buildTopicOptions(
+                                    allDiscoveredTopics,
+                                    listOf("geometry_msgs/msg/Twist"),
+                                    standardOption = TopicBinding("/cmd_vel", "geometry_msgs/msg/Twist")
+                                ),
                                 placeholder = "Select Topic...",
                                 onSelected = { cmdVelTopic = it }
                             )
                             TopicBindingDropdown(
                                 title = "MODE TOPIC",
                                 selected = modeTopic,
-                                options = buildTopicOptions(allDiscoveredTopics, listOf("std_msgs/msg/String")),
+                                options = buildTopicOptions(
+                                    allDiscoveredTopics,
+                                    listOf("std_msgs/msg/String"),
+                                    standardOption = TopicBinding("/robot_mode", "std_msgs/msg/String")
+                                ),
                                 placeholder = "Select Topic...",
                                 onSelected = { modeTopic = it }
                             )
@@ -746,7 +754,8 @@ fun RobotSetupScreen(
                                 selected = batteryTopic,
                                 options = buildTopicOptions(
                                     allDiscoveredTopics,
-                                    listOf("sensor_msgs/msg/BatteryState")
+                                    listOf("sensor_msgs/msg/BatteryState"),
+                                    standardOption = TopicBinding("/battery_state", "sensor_msgs/msg/BatteryState")
                                 ),
                                 placeholder = "Select Topic...",
                                 onSelected = { batteryTopic = it }
@@ -754,21 +763,33 @@ fun RobotSetupScreen(
                             TopicBindingDropdown(
                                 title = "IMU",
                                 selected = imuTopic,
-                                options = buildTopicOptions(allDiscoveredTopics, listOf("sensor_msgs/msg/Imu")),
+                                options = buildTopicOptions(
+                                    allDiscoveredTopics,
+                                    listOf("sensor_msgs/msg/Imu"),
+                                    standardOption = TopicBinding("/imu/data", "sensor_msgs/msg/Imu")
+                                ),
                                 placeholder = "Select Topic...",
                                 onSelected = { imuTopic = it }
                             )
                             TopicBindingDropdown(
                                 title = "ODOM",
                                 selected = odomTopic,
-                                options = buildTopicOptions(allDiscoveredTopics, listOf("nav_msgs/msg/Odometry")),
+                                options = buildTopicOptions(
+                                    allDiscoveredTopics,
+                                    listOf("nav_msgs/msg/Odometry"),
+                                    standardOption = TopicBinding("/odom", "nav_msgs/msg/Odometry")
+                                ),
                                 placeholder = "Select Topic...",
                                 onSelected = { odomTopic = it }
                             )
                             TopicBindingDropdown(
                                 title = "JOINT STATES",
                                 selected = jointStateTopic,
-                                options = buildTopicOptions(allDiscoveredTopics, listOf("sensor_msgs/msg/JointState")),
+                                options = buildTopicOptions(
+                                    allDiscoveredTopics,
+                                    listOf("sensor_msgs/msg/JointState"),
+                                    standardOption = TopicBinding("/joint_states", "sensor_msgs/msg/JointState")
+                                ),
                                 placeholder = "Select Topic...",
                                 onSelected = { jointStateTopic = it }
                             )
@@ -1154,17 +1175,6 @@ fun TopicBindingDropdown(
                 .background(MyColors.HudSurface)
                 .border(1.dp, MyColors.HudBorder, RoundedCornerShape(4.dp))
         ) {
-            DropdownMenuItem(
-                text = {
-                    Text("Not set", color = MyColors.HudText.copy(alpha = 0.6f))
-                },
-                onClick = {
-                    onSelected(null)
-                    expanded = false
-                },
-                colors = MenuDefaults.itemColors(textColor = MyColors.HudText)
-            )
-
             options.forEach { item ->
                 if (item.isHeader) {
                     HorizontalDivider(
