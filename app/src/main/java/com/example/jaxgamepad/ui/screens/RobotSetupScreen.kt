@@ -1,6 +1,8 @@
 package com.example.jaxgamepad.ui.screens
 
 import android.net.Uri
+import androidx.compose.ui.tooling.preview.Preview
+import com.example.jaxgamepad.ui.theme.JaxGamepadTheme
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.LinearEasing
@@ -270,7 +272,7 @@ fun RobotSetupScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Spacer(modifier = Modifier.height(15.dp))
+
                 Image(
                     painter = painterResource(id = R.drawable.saved_robots),
                     contentDescription = "Logo",
@@ -499,7 +501,7 @@ fun RobotSetupScreen(
                 verticalArrangement = Arrangement.spacedBy(5.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Spacer(modifier = Modifier.height(15.dp))
+
                 Image(
                     painter = painterResource(
                         id = if (isAdding) R.drawable.new_robot else R.drawable.saved_robots
@@ -973,13 +975,25 @@ fun RobotListItem(
                     )
                 }
             }
-            Text(
-                text = robot.name,
-                color = MyColors.HudText,
+            Column(
                 modifier = Modifier
                     .padding(start = 12.dp)
                     .weight(1f)
-            )
+            ) {
+                Text(
+                    text = robot.name,
+                    color = MyColors.HudText,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
+                Text(
+                    text = "UPTIME: ${formatUptime(robot.totalUptimeSeconds)}",
+                    color = MyColors.HudText.copy(alpha = 0.5f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Normal,
+                    letterSpacing = 0.5.sp
+                )
+            }
             IconButton(onClick = onEdit) {
                 Icon(
                     imageVector = Icons.Default.Edit,
@@ -1359,6 +1373,97 @@ fun AxisSwitchRow(
                 uncheckedBorderColor = Color.Transparent
             ),
             modifier = Modifier.scale(0.6f)
+        )
+    }
+}
+
+@Preview(showBackground = true, widthDp = 400, heightDp = 800)
+@Composable
+fun RobotSetupScreenPreview() {
+    JaxGamepadTheme {
+        RobotSetupScreen(
+            ros = RosbridgeClient(),
+            savedRobots = listOf(
+                RobotConfig(
+                    name = "ROSbot Demo",
+                    rosAddress = "192.168.1.100:9090",
+                    videoUrl = "http://192.168.1.100:8080",
+                    thumbnailPath = "demo_thumb"
+                )
+            ),
+            onSave = { _, _ -> },
+            onDelete = { },
+            onBack = { },
+            onOpenAccount = { }
+        )
+    }
+}
+
+@Preview(showBackground = true, widthDp = 400, heightDp = 800)
+@Composable
+fun RobotSetupScreenRobotTabPreview() {
+    val sampleRobot = RobotConfig(
+        name = "ROSbot Demo",
+        rosAddress = "192.168.1.100:9090",
+        videoUrl = "http://192.168.1.100:8080",
+        thumbnailPath = "demo_thumb"
+    )
+    JaxGamepadTheme {
+        RobotSetupScreen(
+            ros = RosbridgeClient(),
+            savedRobots = listOf(sampleRobot),
+            onSave = { _, _ -> },
+            onDelete = { },
+            onBack = { },
+            onOpenAccount = { },
+            initialEditingRobot = sampleRobot,
+            initialSelectedTabOrStep = 0
+        )
+    }
+}
+
+@Preview(showBackground = true, widthDp = 400, heightDp = 800)
+@Composable
+fun RobotSetupScreenTopicsTabPreview() {
+    val sampleRobot = RobotConfig(
+        name = "ROSbot Demo",
+        rosAddress = "192.168.1.100:9090",
+        videoUrl = "http://192.168.1.100:8080",
+        thumbnailPath = "demo_thumb"
+    )
+    JaxGamepadTheme {
+        RobotSetupScreen(
+            ros = RosbridgeClient(),
+            savedRobots = listOf(sampleRobot),
+            onSave = { _, _ -> },
+            onDelete = { },
+            onBack = { },
+            onOpenAccount = { },
+            initialEditingRobot = sampleRobot,
+            initialSelectedTabOrStep = 1
+        )
+    }
+}
+
+@Preview(showBackground = true, widthDp = 400, heightDp = 800)
+@Composable
+fun RobotSetupScreenModesTabPreview() {
+    val sampleRobot = RobotConfig(
+        name = "ROSbot Demo",
+        rosAddress = "192.168.1.100:9090",
+        videoUrl = "http://192.168.1.100:8080",
+        thumbnailPath = "demo_thumb"
+    )
+    JaxGamepadTheme {
+        RobotSetupScreen(
+            ros = RosbridgeClient(),
+            savedRobots = listOf(sampleRobot),
+            onSave = { _, _ -> },
+            onDelete = { },
+            onBack = { },
+            onOpenAccount = { },
+            initialEditingRobot = sampleRobot,
+            initialSelectedTabOrStep = 2
         )
     }
 }

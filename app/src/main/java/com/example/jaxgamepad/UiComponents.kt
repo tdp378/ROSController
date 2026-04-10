@@ -650,6 +650,15 @@ fun RobotSelectionDialog(
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Medium
                         )
+                        if (robot.totalUptimeSeconds > 0) {
+                            Text(
+                                text = "TOTAL UPTIME: ${formatUptime(robot.totalUptimeSeconds)}",
+                                color = (if (isSelected) MyColors.HudBlue else MyColors.HudText).copy(alpha = 0.6f),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Normal,
+                                letterSpacing = 0.5.sp
+                            )
+                        }
                     }
                 }
             }

@@ -333,7 +333,16 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
                             list[idx] = normalizedRobot
                             savedRobots = list
                             robotManager.saveRobots(list, ownerUid)
-                            saveRobotConfigToFirestore(normalizedRobot)
+                        } else {
+                            // If not found by ID (shouldn't happen with stable IDs), try name or add it
+                            val nameIdx = list.indexOfFirst { it.name == normalizedRobot.name }
+                            if (nameIdx != -1) {
+                                list[nameIdx] = normalizedRobot
+                            } else {
+                                list.add(normalizedRobot)
+                            }
+                            savedRobots = list
+                            robotManager.saveRobots(list, ownerUid)
                         }
                     },
                     onHapticsChange = { hapticsEnabled = it },
