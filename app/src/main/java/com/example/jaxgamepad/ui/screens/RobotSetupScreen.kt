@@ -3,8 +3,11 @@ package com.example.jaxgamepad.ui.screens
 import android.net.Uri
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.jaxgamepad.ui.theme.JaxGamepadTheme
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -97,6 +100,7 @@ import com.example.jaxgamepad.formatUptime
 import com.example.jaxgamepad.saveImageToInternalStorage
 import com.example.jaxgamepad.saveRobotConfigToFirestore
 import com.example.jaxgamepad.ui.theme.MyColors
+import com.example.jaxgamepad.ui.theme.toCyber
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -142,7 +146,7 @@ fun RobotSetupScreen(
 
     CyberDialog(
         show = showRosRequirements,
-        title = "MINIMUM REQUIREMENTS",
+        title = "MINIMUM REQUIREMENTS".toCyber,
         confirmText = "PROCEED ▶",
         onConfirm = {
             showRosRequirements = false
@@ -154,7 +158,7 @@ fun RobotSetupScreen(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                "Minimum Robot Requirements:",
+                "Minimum Robot Requirements:".toCyber,
                 color = MyColors.HudBlue,
                 fontWeight = FontWeight.Bold,
                 fontSize = 14.sp
@@ -293,7 +297,7 @@ fun RobotSetupScreen(
                     ) {
                         Text(
                             modifier = Modifier.padding(end = 6.dp),
-                            text = "ADD NEW",
+                            text = "ADD NEW".toCyber,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = MyColors.HudBlue,
@@ -363,7 +367,7 @@ fun RobotSetupScreen(
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column {
                                         Text(
-                                            text = "SYSTEM NOTIFICATION",
+                                            text = "SYSTEM NOTIFICATION".toCyber,
                                             color = MyColors.HudBlue,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
@@ -389,11 +393,20 @@ fun RobotSetupScreen(
                         .fillMaxWidth()
                         .height(50.dp)
                 ) {
-                    Image(
-                        painter = painterResource(R.drawable.back_button),
-                        contentDescription = "Back",
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .border(1.dp, MyColors.HudText.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                            .background(MyColors.HudSurface, RoundedCornerShape(10.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "BACK",
+                            color = MyColors.HudText.copy(alpha = 0.75f),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.height(25.dp))
             }
@@ -643,7 +656,7 @@ fun RobotSetupScreen(
                             Spacer(modifier = Modifier.height(8.dp))
 
                             Text(
-                                text = "AXIS SETTINGS",
+                                text = "AXIS SETTINGS".toCyber,
                                 color = MyColors.HudBlue,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
@@ -803,7 +816,7 @@ fun RobotSetupScreen(
                             ) {
                                 Text(
                                     modifier = Modifier.padding(end = 6.dp),
-                                    text = "ADD MODE",
+                                    text = "ADD MODE".toCyber,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = MyColors.HudBlue,
@@ -859,18 +872,21 @@ fun RobotSetupScreen(
                             .weight(1f)
                             .height(50.dp)
                     ) {
-                        Image(
-                            painter = painterResource(
-                                if (isAdding && selectedTabOrStep > 0) {
-                                    R.drawable.back_button
-                                } else {
-                                    R.drawable.cancel_button
-                                }
-                            ),
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.FillBounds
-                        )
+                        val label = if (isAdding && selectedTabOrStep > 0) "BACK" else "CANCEL"
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .border(1.dp, MyColors.HudText.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                                .background(MyColors.HudSurface, RoundedCornerShape(10.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                color = MyColors.HudText.copy(alpha = 0.75f),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                        }
                     }
 
                     val canGoNext =
@@ -933,18 +949,26 @@ fun RobotSetupScreen(
                             .weight(1f)
                             .height(50.dp)
                     ) {
-                        val imgRes = when {
-                            isAdding && selectedTabOrStep < 2 -> R.drawable.next_button
-                            isAdding && selectedTabOrStep == 2 -> R.drawable.finish_button
-                            else -> R.drawable.save_button
+                        val label = when {
+                            isAdding && selectedTabOrStep < 2 -> "NEXT ▶"
+                            isAdding && selectedTabOrStep == 2 -> "FINISH ▶"
+                            else -> "SAVE ▶"
                         }
 
-                        Image(
-                            painter = painterResource(imgRes),
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.FillBounds
-                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .border(1.dp, MyColors.HudBlue, RoundedCornerShape(10.dp))
+                                .background(MyColors.HudBlue.copy(alpha = 0.10f), RoundedCornerShape(10.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                color = MyColors.HudBlue,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                        }
                     }
                 }
             }
@@ -1105,7 +1129,7 @@ fun DiscoverTopicsButton(
             Spacer(modifier = Modifier.width(12.dp))
             Column {
                 Text(
-                    text = "AUTO DISCOVER TOPICS",
+                    text = "AUTO DISCOVER TOPICS".toCyber,
                     color = MyColors.HudBlue,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
@@ -1135,15 +1159,25 @@ fun TopicBindingDropdown(
     onSelected: (TopicBinding?) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var manualMode by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
 
     ExposedDropdownMenuBox(
         expanded = expanded,
-        onExpandedChange = { expanded = !expanded }
+        onExpandedChange = { 
+            if (!manualMode) {
+                expanded = !expanded 
+            }
+        }
     ) {
         OutlinedTextField(
             value = selected?.name ?: "",
-            onValueChange = {},
-            readOnly = true,
+            onValueChange = { newName ->
+                if (manualMode) {
+                    onSelected(TopicBinding(newName, selected?.type ?: "unknown"))
+                }
+            },
+            readOnly = !manualMode,
             label = { Text(title, fontSize = 10.sp) },
             placeholder = {
                 Text(
@@ -1152,7 +1186,22 @@ fun TopicBindingDropdown(
                     color = MyColors.HudText.copy(alpha = 0.3f)
                 )
             },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            trailingIcon = {
+                if (manualMode) {
+                    IconButton(onClick = { 
+                        manualMode = false
+                        focusManager.clearFocus()
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Sync,
+                            contentDescription = "Switch to Selection",
+                            tint = MyColors.HudBlue
+                        )
+                    }
+                } else {
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+                }
+            },
             modifier = Modifier
                 .menuAnchor()
                 .fillMaxWidth()
@@ -1175,6 +1224,22 @@ fun TopicBindingDropdown(
                 .background(MyColors.HudSurface)
                 .border(1.dp, MyColors.HudBorder, RoundedCornerShape(4.dp))
         ) {
+            // Manual entry option at the top
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        text = "✎ ENTER MANUALLY",
+                        color = MyColors.HudBlue,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                },
+                onClick = {
+                    manualMode = true
+                    expanded = false
+                }
+            )
+
             options.forEach { item ->
                 if (item.isHeader) {
                     HorizontalDivider(

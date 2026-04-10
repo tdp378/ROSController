@@ -29,10 +29,14 @@ import androidx.compose.runtime.LaunchedEffect
 import android.util.Log
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Help
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import com.example.jaxgamepad.ui.screens.JaxDriverScreen
 import com.example.jaxgamepad.ui.screens.RobotSetupScreen
 import com.example.jaxgamepad.ui.screens.StartMenuScreen
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import com.example.jaxgamepad.ui.theme.MyColors
 
 
@@ -61,7 +65,7 @@ enum class Screen { Menu, Gamepad, RobotSetup }
 
 
 @Composable
-fun GlobalTopBar(onOpenAccount: () -> Unit, onOpenHelp: () -> Unit) {
+fun GlobalTopBar(user: com.google.firebase.auth.FirebaseUser?, onOpenAccount: () -> Unit, onOpenHelp: () -> Unit) {
     Surface(
         color = Color.Black,
         modifier = Modifier.fillMaxWidth()
@@ -108,12 +112,23 @@ fun GlobalTopBar(onOpenAccount: () -> Unit, onOpenHelp: () -> Unit) {
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.Person,
-                    contentDescription = "Profile",
-                    tint = MyColors.HudBlue,
-                    modifier = Modifier.size(20.dp) // Smaller icon
-                )
+                if (user?.photoUrl != null) {
+                    AsyncImage(
+                        model = user.photoUrl,
+                        contentDescription = "Profile Photo",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = "Profile",
+                        tint = MyColors.HudBlue,
+                        modifier = Modifier.size(20.dp) // Smaller icon
+                    )
+                }
             }
         }
     }
@@ -122,7 +137,7 @@ fun GlobalTopBar(onOpenAccount: () -> Unit, onOpenHelp: () -> Unit) {
 fun AppNavigation(reHideSystemBars: () -> Unit) {
     val context = LocalContext.current
     val robotManager = remember { RobotManager(context) }
-    var signedInUser by remember { mutableStateOf(FirebaseAuth.getInstance().currentUser) }
+    var signedInUser by remember { mutableStateOf<com.google.firebase.auth.FirebaseUser?>(null) }
     var terminalText by remember { mutableStateOf("") }
     var hasBooted by remember { mutableStateOf(false) }
     val networkInfo by produceState(initialValue = "SCANNING" to "0.0.0.0") {
@@ -140,12 +155,14 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
             val (status, addr) = networkInfo
             val isConnected = status == "WIFI_CONNECTED"
             val userEmail = signedInUser?.email ?: "GUEST"
+            val userName = signedInUser?.displayName ?: "GUEST"
+
 
             // Define the template once
             buildString {
                 appendLine("> BOOTING_ROS_CONTROLLER")
                 appendLine(">")
-                appendLine("> USER: $userEmail")
+                appendLine("> USER: ${userName.uppercase().replace(" ", "_")}")
                 appendLine("> LINK: $status")
                 if (isConnected) {
                     appendLine("> IP: $addr")
@@ -156,7 +173,7 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
                     appendLine("> ERROR: NO_LOCAL_IP_FOUND")
                     append("> STATUS: SYSTEM_OFFLINE")
                 }
-            }
+            }.uppercase()
         }
     }
 
@@ -243,7 +260,7 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
             scope.launch {
                 val result = googleAuthManager.signInWithGoogle()
                 result.onSuccess {
-                    showAccountDialog = false
+                    // Stay on the dialog to show the success state/profile details
                 }.onFailure { e ->
                     Log.e("GOOGLE_AUTH", "Sign in failed", e)
                 }
@@ -252,12 +269,33 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
         onSignOut = {
             FirebaseAuth.getInstance().signOut()
             showAccountDialog = false
+        },
+        onDeleteAccount = {
+            val user = FirebaseAuth.getInstance().currentUser
+            user?.let { u ->
+                val db = FirebaseFirestore.getInstance()
+                // Delete user data from Firestore
+                db.collection("users").document(u.uid).delete()
+                
+                // Delete the auth user
+                u.delete().addOnCompleteListener { task ->
+                    if (task.isSuccessful) {
+                        android.widget.Toast.makeText(context, "ACCOUNT PURGED FROM SYSTEM", android.widget.Toast.LENGTH_LONG).show()
+                        FirebaseAuth.getInstance().signOut() // Force logout state
+                        showAccountDialog = false
+                    } else {
+                        android.widget.Toast.makeText(context, "PURGE FAILED: Please re-login and try again", android.widget.Toast.LENGTH_LONG).show()
+                        Log.e("AUTH", "Failed to delete account", task.exception)
+                    }
+                }
+            }
         }
     )
 
     Column(modifier = Modifier.fillMaxSize()) {
         if (currentScreen != Screen.Gamepad) {
             GlobalTopBar(
+                user = signedInUser,
                 onOpenAccount = {
                     showAccountDialog = true
                 },

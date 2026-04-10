@@ -32,7 +32,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
@@ -66,11 +68,16 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.unit.dp
+import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.firestore.FirebaseFirestore
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.example.jaxgamepad.ui.screens.HudIndicator
 import com.example.jaxgamepad.ui.theme.MyColors
+import coil.compose.AsyncImage
+import com.example.jaxgamepad.ui.theme.toCyber
 
 
 @Composable
@@ -92,81 +99,89 @@ fun CyberDialog(
                 .padding(horizontal = 12.dp)
                 .shadow(
                     elevation = 20.dp,
-                    shape = RoundedCornerShape(16.dp),
-                    ambientColor = MyColors.HudBlue, // Explicitly named to avoid type mismatch
-                    spotColor = MyColors.HudBlue    // Explicitly named
+                    shape = RoundedCornerShape(12.dp),
+                    ambientColor = MyColors.HudBlue,
+                    spotColor = MyColors.HudBlue
                 )
-                .border(
-                    width = 1.5.dp,
-                    brush = Brush.linearGradient(
-                        listOf(MyColors.HudBlue, Color(0xFF008CFF), MyColors.HudBlue)
-                    ),
-                    shape = RoundedCornerShape(16.dp)
-                )
-                .background(
-                    brush = Brush.verticalGradient(
-                        listOf(
-                            Color(0xFF020617).copy(alpha = 0.95f),
-                            Color(0xFF020617).copy(alpha = 0.88f)
-                        )
-                    ),
-                    shape = RoundedCornerShape(16.dp)
-                )
-                .padding(10.dp)
+                .background(MyColors.HudBackground.copy(alpha = 0.98f), RoundedCornerShape(12.dp))
+                .border(1.dp, MyColors.HudBlue.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
         ) {
-            // ... rest of dialog content remains the same
             Column(
                 modifier = Modifier
+                    .padding(20.dp)
                     .fillMaxWidth()
-                    .heightIn(max = 700.dp)
             ) {
+                // Header
                 Text(
-                    text = title,
-                    color = MyColors.HudText,
+                    text = title.uppercase(),
+                    color = MyColors.HudBlue,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    letterSpacing = 2.sp
+                    letterSpacing = 2.sp,
+                    fontFamily = FontFamily.Monospace
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Column(
-                    modifier = Modifier
-                        .weight(1f, fill = false)
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    if (useTerminalLook) {
-                        CyberTerminalBox { content() }
-                    } else {
+                // Content
+                Box(modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
+                    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                         content()
                     }
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
+                // Buttons
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("DISMISS", color = MyColors.HudText.copy(alpha = 0.75f))
+                    // Always show a Close/Cancel button
+                    CyberButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .border(1.dp, Color.Gray.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                                .background(Color.Gray.copy(alpha = 0.05f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "DISMISS",
+                                color = Color.Gray,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                letterSpacing = 1.sp
+                            )
+                        }
                     }
 
                     if (confirmText.isNotEmpty()) {
-                        Spacer(modifier = Modifier.width(12.dp))
                         CyberButton(
                             onClick = onConfirm,
-                            modifier = Modifier.height(35.dp).width(130.dp)
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
                         ) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .border(1.dp, MyColors.HudBlue, RoundedCornerShape(10.dp))
-                                    .background(MyColors.HudBlue.copy(alpha = 0.10f), RoundedCornerShape(10.dp)),
+                                    .border(1.dp, MyColors.HudBlue.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                                    .background(MyColors.HudBlue.copy(alpha = 0.1f)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(confirmText, color = MyColors.HudBlue, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Text(
+                                    confirmText,
+                                    color = MyColors.HudBlue,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    letterSpacing = 1.sp
+                                )
                             }
                         }
                     }
@@ -185,56 +200,27 @@ fun CyberButton(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
-    val haptic = LocalHapticFeedback.current
-
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed && enabled) 0.96f else 1f,
-        animationSpec = tween(durationMillis = 90),
-        label = "btn_scale"
-    )
+    val scale by animateFloatAsState(if (isPressed && enabled) 0.96f else 1f, label = "buttonScale")
+    val alpha by animateFloatAsState(if (isPressed && enabled) 0.8f else 1f, label = "buttonAlpha")
 
     Box(
         modifier = modifier
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
+                this.alpha = if (enabled) alpha else 0.5f
             }
-            .alpha(if (enabled) 1f else 0.5f)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
                 enabled = enabled,
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onClick()
-                }
+                onClick = onClick
             ),
-        contentAlignment = Alignment.Center,
-        content = content
-    )
-}
-
-@Composable
-fun CyberTerminalBox(
-    modifier: Modifier = Modifier,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Box(modifier = modifier.fillMaxWidth().aspectRatio(1.8f)) {
-        Image(
-            painter = painterResource(R.drawable.terminal_box),
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Fit
-        )
-        Column(
-            modifier = Modifier
-                .matchParentSize()
-                .padding(start = 54.dp, top = 26.dp, end = 50.dp, bottom = 22.dp),
-            content = content
-        )
+        contentAlignment = Alignment.Center
+    ) {
+        content()
     }
 }
-
 
 @Composable
 fun HelpSection(
@@ -284,7 +270,7 @@ fun HelpDialog(
 ) {
     CyberDialog(
         show = show,
-        title = "SYSTEM HELP",
+        title = "SYSTEM_HELP",
         confirmText = "",
         onConfirm = {},
         onDismiss = onDismiss
@@ -292,13 +278,13 @@ fun HelpDialog(
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
 
 
-            HelpSection("MINIMUM REQUIREMENTS") {
+            HelpSection("MINIMUM REQUIREMENTS".toCyber) {
                 HelpBullet("rosbridge websocket (ws://<ip>:9090)")
                 HelpBullet("geometry_msgs/Twist (motion)")
                 HelpBullet("std_msgs/String (mode)")
             }
 
-            HelpSection("ADD NEW ROBOT") {
+            HelpSection("ADD NEW ROBOT".toCyber) {
                 HelpNote("Robot Tab")
 
                 HelpBullet("Enter robot name")
@@ -433,12 +419,105 @@ fun IndicatorRockerRow(
 }
 
 @Composable
+fun ProfileDetailsContent(user: FirebaseUser) {
+    var profile by remember { mutableStateOf<UserProfile?>(null) }
+    var showLocationPrompt by remember { mutableStateOf(false) }
+    var locationInput by remember { mutableStateOf("") }
+    val db = FirebaseFirestore.getInstance()
+
+    LaunchedEffect(user.uid) {
+        db.collection("users").document(user.uid).get()
+            .addOnSuccessListener { doc ->
+                val p = doc.toObject(UserProfile::class.java)
+                profile = p
+                // If location is blank, show the quick popup
+                if (p != null && p.location.isBlank()) {
+                    showLocationPrompt = true
+                }
+            }
+    }
+
+    if (showLocationPrompt) {
+        CyberDialog(
+            show = true,
+            title = "LOCATION_REQUESTED",
+            confirmText = "SAVE ▶",
+            onConfirm = {
+                if (locationInput.isNotBlank()) {
+                    db.collection("users").document(user.uid)
+                        .update("location", locationInput)
+                    profile = profile?.copy(location = locationInput)
+                    showLocationPrompt = false
+                }
+            },
+            onDismiss = { showLocationPrompt = false }
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "Please provide your location so that you can be included in the interactive user map",
+                    color = MyColors.HudText,
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+                MyColors.HudTextField(
+                    value = locationInput,
+                    onValueChange = { locationInput = it },
+                    label = "COUNTRY / STATE"
+                )
+            }
+        }
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        ProfileInfoRow("EMAIL", (user.email ?: "N/A").toCyber)
+
+        if (profile != null) {
+            ProfileInfoRow("NAME", (if (profile?.displayName.isNullOrBlank()) "NOT SET" else profile?.displayName!!).toCyber)
+            ProfileInfoRow("LOCATION", (if (profile?.location.isNullOrBlank()) "NOT SET" else profile?.location!!).toCyber)
+        } else {
+            Text(
+                "Loading cloud data...",
+                color = MyColors.HudText.copy(alpha = 0.5f),
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+    }
+}
+
+@Composable
+fun ProfileInfoRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = "$label:",
+            color = MyColors.HudBlue.copy(alpha = 0.7f),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace
+        )
+        Text(
+            text = value.uppercase(),
+            color = MyColors.HudText,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace
+        )
+    }
+}
+
+@Composable
 fun AccountStatusDialog(
     show: Boolean,
     user: com.google.firebase.auth.FirebaseUser?,
     onDismiss: () -> Unit,
     onGoogleLogin: () -> Unit,
-    onSignOut: () -> Unit
+    onSignOut: () -> Unit,
+    onDeleteAccount: () -> Unit = {}
 ) {
     if (!show) return
 
@@ -446,13 +525,53 @@ fun AccountStatusDialog(
     var isLoginMode by remember { mutableStateOf(true) }
     var submitTrigger by remember { mutableStateOf(0) }
     var isLoading by remember { mutableStateOf(false) }
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
 
     val isSignedIn = user != null
-    val title = if (showLoginForm) "SYSTEM_AUTHENTICATION" else if (isSignedIn) "AUTH_SUCCESSFUL" else "GUEST_ACCESS"
+    var cloudUserName by remember { mutableStateOf<String?>(null) }
+
+    // Fetch name for the main status view
+    if (isSignedIn) {
+        LaunchedEffect(user?.uid) {
+            val db = FirebaseFirestore.getInstance()
+            user?.uid?.let { uid ->
+                db.collection("users").document(uid).get()
+                    .addOnSuccessListener { doc ->
+                        cloudUserName = doc.getString("displayName")
+                    }
+            }
+        }
+    }
+
+    val title = when {
+        showLoginForm -> "SYSTEM_AUTHENTICATION"
+        isSignedIn -> "AUTH_SUCCESSFUL"
+        else -> "GUEST_ACCESS"
+    }
 
     val confirmText = if (showLoginForm && !isSignedIn) {
         if (isLoading) "PROCESSING..." else if (isLoginMode) "LOGIN ▶" else "CREATE ▶"
     } else ""
+
+    if (showDeleteConfirmation) {
+        CyberDialog(
+            show = true,
+            title = "CONFIRM_DESTRUCTION",
+            confirmText = "DELETE FOREVER",
+            onConfirm = {
+                showDeleteConfirmation = false
+                onDeleteAccount()
+            },
+            onDismiss = { showDeleteConfirmation = false }
+        ) {
+            Text(
+                text = "WARNING: This action is irreversible. All robot configurations and cloud-synced data will be permanently purged from the system.",
+                color = MyColors.HudText,
+                fontSize = 12.sp,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+    }
 
     CyberDialog(
         show = show,
@@ -487,20 +606,45 @@ fun AccountStatusDialog(
             ) {
                 // User Info Section
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Default.AccountCircle,
-                        contentDescription = null,
-                        tint = MyColors.HudBlue,
-                        modifier = Modifier.size(48.dp)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    if (user?.photoUrl != null) {
+                        AsyncImage(
+                            model = user.photoUrl,
+                            contentDescription = "Profile Photo",
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(CircleShape)
+                                .border(2.dp, MyColors.HudBlue.copy(alpha = 0.6f), CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.AccountCircle,
+                            contentDescription = null,
+                            tint = MyColors.HudBlue,
+                            modifier = Modifier.size(48.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = if (isSignedIn) "IDENTIFIED: ${user?.email}" else "STATUS: UNREGISTERED",
+                        text = (if (isSignedIn) {
+                            if (!cloudUserName.isNullOrBlank()) "IDENTIFIED:$cloudUserName"
+                            else "IDENTIFIED: ${user?.email}"
+                        } else {
+                            "STATUS: UNREGISTERED"
+                        })
+                            .uppercase()            // 1. Force ALL CAPS
+                            .replace(" ", "_"),     // 2. Swap spaces for underscores
                         color = MyColors.HudText,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace
                     )
+
+                    if (isSignedIn) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        ProfileDetailsContent(user!!)
+                    }
+
                     if (!isSignedIn) {
                         Text(
                             text = "Cloud synchronization disabled.",
@@ -566,7 +710,7 @@ fun AccountStatusDialog(
                         Image(
                             painter = painterResource(id = R.drawable.android_dark),
                             contentDescription = "Continue with Google",
-                            modifier = Modifier.size(48.dp)
+                            modifier = Modifier.size(56.dp)
                         )
                     }
                 } else {
@@ -585,15 +729,28 @@ fun AccountStatusDialog(
                                 .background(Color.Red.copy(alpha = 0.05f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("TERMINATE SESSION (LOGOUT)", color = Color.Red, fontWeight = FontWeight.Bold)
+                            Text("TERMINATE_SESSION_(LOGOUT)", color = Color.Red, fontWeight = FontWeight.Bold)
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "DELETE ACCOUNT",
+                        color = Color.Gray.copy(alpha = 0.6f),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        textDecoration = TextDecoration.Underline,
+                        modifier = Modifier
+                            .clickable { showDeleteConfirmation = true }
+                            .padding(4.dp)
+                    )
                 }
             }
         }
     }
 }
-
 @Composable
 fun RobotSelectionDialog(
     savedRobots: List<RobotConfig>,
@@ -607,7 +764,7 @@ fun RobotSelectionDialog(
 
     CyberDialog(
         show = true,
-        title = "Robot Selection",
+        title = "Robot Selection".toCyber,
         confirmText = "LAUNCH ▶",
         onConfirm = { selected?.let { onSelect(it) } },
         onDismiss = onDismiss
@@ -652,7 +809,7 @@ fun RobotSelectionDialog(
                         )
                         if (robot.totalUptimeSeconds > 0) {
                             Text(
-                                text = "TOTAL UPTIME: ${formatUptime(robot.totalUptimeSeconds)}",
+                                text = "TOTAL_UPTIME: ${formatUptime(robot.totalUptimeSeconds)}",
                                 color = (if (isSelected) MyColors.HudBlue else MyColors.HudText).copy(alpha = 0.6f),
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Normal,
@@ -723,3 +880,4 @@ fun MyColors.HudTextField(value: String, onValueChange: (String) -> Unit, label:
         shape = RoundedCornerShape(8.dp)
     )
 }
+
