@@ -134,78 +134,45 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
         }
     }
 
-    LaunchedEffect(Unit) {
-        if (!hasBooted) {
+// 1. Centralize the text logic so you don't repeat yourself
+    val bootScript by remember(networkInfo, signedInUser) {
+        derivedStateOf {
             val (status, addr) = networkInfo
             val isConnected = status == "WIFI_CONNECTED"
             val userEmail = signedInUser?.email ?: "GUEST"
 
-            val script = if (isConnected) {
-                // Standard success boot
-                "> BOOTING_ROS_CONTROLLER" +
-                        "\n|>" +
-                        "\n|>" +
-                        "\n|> USER: $userEmail" +
-                        "\n|> LINK: $status" +
-                        "\n|> IP: $addr" +
-                        "\n|>" +
-                        "\n|>" +
-                        "\n|> STATUS: SYSTEM_READY_"
-            } else {
-                // Failure boot sequence
-                "> BOOTING_ROS_CONTROLLER" +
-                        "\n|>" +
-                        "\n|>" +
-                        "\n|> USER: $userEmail" +
-                        "\n|> LINK: $status" +
-                        "\n|> IP: UNKNOWN" +
-                        "\n|>" +
-                        "\n|> ERROR: NO_LOCAL_IP_FOUND" +
-                        "\n|>" +
-                        "\n|> STATUS: SYSTEM_OFFLINE"
-            }
-
-            val chunks = script.split("|")
-            chunks.forEachIndexed { index, chunk ->
-                chunk.forEach { char ->
-                    terminalText += char
-                    delay(30)
+            // Define the template once
+            buildString {
+                appendLine("> BOOTING_ROS_CONTROLLER")
+                appendLine(">")
+                appendLine("> USER: $userEmail")
+                appendLine("> LINK: $status")
+                if (isConnected) {
+                    appendLine("> IP: $addr")
+                    appendLine(">")
+                    append("> STATUS: SYSTEM_READY_")
+                } else {
+                    appendLine("> IP: UNKNOWN")
+                    appendLine("> ERROR: NO_LOCAL_IP_FOUND")
+                    append("> STATUS: SYSTEM_OFFLINE")
                 }
-                if (index < chunks.size - 1) delay(300)
             }
-            hasBooted = true
         }
     }
 
-    LaunchedEffect(networkInfo, signedInUser) {
-        if (hasBooted) {
-            val (status, addr) = networkInfo
-            val isConnected = status == "WIFI_CONNECTED"
-            val userEmail = signedInUser?.email ?: "GUEST"
-
-            terminalText = if (isConnected) {
-                "> BOOTING_ROS_CONTROLLER" +
-                        "\n|>" +
-                        "\n|>" +
-                        "\n|> USER: $userEmail" +
-                        "\n|> LINK: $status" +
-                        "\n|> IP: $addr" +
-                        "\n|>" +
-                        "\n|>" +
-                        "\n|> STATUS: SYSTEM_READY_"
-            } else {
-                // Failure boot sequence
-                "> BOOTING_ROS_CONTROLLER" +
-                        "\n|>" +
-                        "\n|>" +
-                        "\n|> USER: $userEmail" +
-                        "\n|> LINK: $status" +
-                        "\n|> IP: UNKNOWN" +
-                        "\n|>" +
-                        "\n|> ERROR: NO_LOCAL_IP_FOUND" +
-                        "\n|>" +
-                        "\n|> STATUS: SYSTEM_OFFLINE"
+// 2. Use one effect to bridge the gap
+    LaunchedEffect(bootScript) {
+        if (!hasBooted) {
+            // Run the typewriter animation ONLY the first time
+            terminalText = ""
+            bootScript.forEach { char ->
+                terminalText += char
+                delay(30)
             }
+            hasBooted = true
+        } else {
+            // After the first boot, just snap to the new text instantly
+            terminalText = bootScript
         }
     }
 
