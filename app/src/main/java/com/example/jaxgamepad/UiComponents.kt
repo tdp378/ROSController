@@ -426,13 +426,16 @@ fun ProfileDetailsContent(user: FirebaseUser) {
     val db = FirebaseFirestore.getInstance()
 
     LaunchedEffect(user.uid) {
-        db.collection("users").document(user.uid).get()
-            .addOnSuccessListener { doc ->
-                val p = doc.toObject(UserProfile::class.java)
-                profile = p
-                // If location is blank, show the quick popup
-                if (p != null && p.location.isBlank()) {
-                    showLocationPrompt = true
+        db.collection("users").document(user.uid)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) return@addSnapshotListener
+                if (snapshot != null && snapshot.exists()) {
+                    val p = snapshot.toObject(UserProfile::class.java)
+                    profile = p
+                    // If location is blank, show the quick popup
+                    if (p != null && p.location.isBlank()) {
+                        showLocationPrompt = true
+                    }
                 }
             }
     }
@@ -535,9 +538,10 @@ fun AccountStatusDialog(
         LaunchedEffect(user?.uid) {
             val db = FirebaseFirestore.getInstance()
             user?.uid?.let { uid ->
-                db.collection("users").document(uid).get()
-                    .addOnSuccessListener { doc ->
-                        cloudUserName = doc.getString("displayName")
+                db.collection("users").document(uid)
+                    .addSnapshotListener { snapshot, error ->
+                        if (error != null) return@addSnapshotListener
+                        cloudUserName = snapshot?.getString("displayName")
                     }
             }
         }
@@ -557,7 +561,7 @@ fun AccountStatusDialog(
         CyberDialog(
             show = true,
             title = "CONFIRM_DESTRUCTION",
-            confirmText = "DELETE FOREVER",
+            confirmText = "DELETE_FOREVER",
             onConfirm = {
                 showDeleteConfirmation = false
                 onDeleteAccount()
@@ -630,7 +634,7 @@ fun AccountStatusDialog(
                             if (!cloudUserName.isNullOrBlank()) "IDENTIFIED:$cloudUserName"
                             else "IDENTIFIED: ${user?.email}"
                         } else {
-                            "STATUS: UNREGISTERED"
+                            "STATUS:UNREGISTERED"
                         })
                             .uppercase()            // 1. Force ALL CAPS
                             .replace(" ", "_"),     // 2. Swap spaces for underscores

@@ -167,7 +167,7 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
                 if (isConnected) {
                     appendLine("> IP: $addr")
                     appendLine(">")
-                    append("> STATUS: SYSTEM_READY_")
+                    append("> STATUS: SYSTEM_READY")
                 } else {
                     appendLine("> IP: UNKNOWN")
                     appendLine("> ERROR: NO_LOCAL_IP_FOUND")
@@ -274,20 +274,26 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
             val user = FirebaseAuth.getInstance().currentUser
             user?.let { u ->
                 val db = FirebaseFirestore.getInstance()
-                // Delete user data from Firestore
+                // Delete user data from Firestore first
                 db.collection("users").document(u.uid).delete()
-                
-                // Delete the auth user
-                u.delete().addOnCompleteListener { task ->
-                    if (task.isSuccessful) {
-                        android.widget.Toast.makeText(context, "ACCOUNT PURGED FROM SYSTEM", android.widget.Toast.LENGTH_LONG).show()
-                        FirebaseAuth.getInstance().signOut() // Force logout state
-                        showAccountDialog = false
-                    } else {
-                        android.widget.Toast.makeText(context, "PURGE FAILED: Please re-login and try again", android.widget.Toast.LENGTH_LONG).show()
-                        Log.e("AUTH", "Failed to delete account", task.exception)
+                    .addOnCompleteListener { firestoreTask ->
+                        // Even if firestore delete fails, we should try to delete auth user
+                        // But usually we want both.
+                        u.delete().addOnCompleteListener { authTask ->
+                            if (authTask.isSuccessful) {
+                                android.widget.Toast.makeText(context, "ACCOUNT PURGED FROM SYSTEM", android.widget.Toast.LENGTH_LONG).show()
+                                showAccountDialog = false
+                            } else {
+                                val error = authTask.exception?.message ?: "Unknown error"
+                                if (error.contains("recent login", ignoreCase = true)) {
+                                    android.widget.Toast.makeText(context, "SECURITY: Please re-login to verify identity before purging", android.widget.Toast.LENGTH_LONG).show()
+                                } else {
+                                    android.widget.Toast.makeText(context, "PURGE FAILED: $error", android.widget.Toast.LENGTH_LONG).show()
+                                }
+                                Log.e("AUTH", "Failed to delete account: $error", authTask.exception)
+                            }
+                        }
                     }
-                }
             }
         }
     )
