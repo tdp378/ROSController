@@ -1,16 +1,19 @@
 package com.example.jaxgamepad.ui.screens
 
 import android.annotation.SuppressLint
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement
@@ -49,7 +52,7 @@ import kotlin.math.sqrt
 import com.example.jaxgamepad.ui.theme.MyColors
 
 // Enum for LED and Telemetry selection
-enum class HudIndicator { ROS_LINK, MOTORS, IMU, CAMERA, BATTERY, CPU }
+enum class HudIndicator { ROS_LINK, ODOM, IMU, CAMERA, BATTERY, CPU }
 
 
 
@@ -66,7 +69,8 @@ fun JaxHudScreen(
     batteryPercent: Int = 0,
     cpuTemp: Int = 0,
     isLinked: Boolean = false,
-    motorsActive: Boolean = false,
+    odomActive: Boolean = false,
+    totalDistance: Double = 0.0,
     imuActive: Boolean = false,
     cameraActive: Boolean = false,
     leftJoystickValue: Pair<Float, Float> = 0f to 0f,
@@ -103,12 +107,14 @@ fun JaxHudScreen(
 
     var speedSliderValue by remember { mutableStateOf(0.0f) }
 
-    val activeLedList = remember(enabledIndicators, isLinked, motorsActive, imuActive, cameraActive) {
+    val activeLedList = remember(enabledIndicators, isLinked, odomActive, imuActive, cameraActive, totalDistance) {
         mutableListOf<Triple<String, Color, Boolean>>().apply {
             if (enabledIndicators.contains(HudIndicator.ROS_LINK))
                 add(Triple("ROS LINK", if (isLinked) Green else MyColors.HudBlueD, isLinked))
-            if (enabledIndicators.contains(HudIndicator.MOTORS))
-                add(Triple("MOTORS", if (motorsActive) Green else MyColors.HudBlueD, motorsActive))
+            if (enabledIndicators.contains(HudIndicator.ODOM)) {
+                val distStr = String.format("%.2fM", totalDistance)
+                add(Triple("ODOM $distStr", if (odomActive) Green else MyColors.HudBlueD, odomActive))
+            }
             if (enabledIndicators.contains(HudIndicator.IMU))
                 add(Triple("IMU", if (imuActive) Green else MyColors.HudBlueD, imuActive))
             if (enabledIndicators.contains(HudIndicator.CAMERA))
@@ -218,8 +224,15 @@ fun JaxHudScreen(
                         horizontalAlignment = Alignment.End
                     ) {
                         val telemetryItems = mutableListOf<Triple<String, Color, Boolean>>().apply {
-                            if (enabledIndicators.contains(HudIndicator.BATTERY))
-                                add(Triple("BATTERY $batteryPercent%", if (!isLinked) MyColors.HudBlueD else if (batteryPercent < 20) HudRed else Green, isLinked))
+                            if (enabledIndicators.contains(HudIndicator.BATTERY)) {
+                                val batteryColor = when {
+                                    !isLinked -> MyColors.HudBlueD
+                                    batteryPercent <= 0 -> MyColors.HudBlueD // Treat 0 as no data/disconnected
+                                    batteryPercent < 20 -> HudRed
+                                    else -> Green
+                                }
+                                add(Triple("BATTERY $batteryPercent%", batteryColor, isLinked && batteryPercent > 0))
+                            }
                             if (enabledIndicators.contains(HudIndicator.CPU))
                                 add(Triple("CPU TEMP $cpuTemp°", if (!isLinked) MyColors.HudBlueD else if (cpuTemp > 75) HudRed else Green, isLinked))
                         }
@@ -331,9 +344,19 @@ fun HudVerticalSlider(
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
-    val clampedValue = value.coerceIn(-1f, 1f)
-    val displayValue01 = (clampedValue + 1f) / 2f
     val haptic = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    val animatableValue = remember { Animatable(value) }
+
+    // Synchronize animatable value with external value changes (except when animating)
+    LaunchedEffect(value) {
+        if (!animatableValue.isRunning) {
+            animatableValue.snapTo(value)
+        }
+    }
+
+    val clampedValue = animatableValue.value.coerceIn(-1f, 1f)
+    val displayValue01 = (clampedValue + 1f) / 2f
 
     Column(
         modifier = modifier,
@@ -345,8 +368,29 @@ fun HudVerticalSlider(
             fontSize = 9.sp,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp
+            letterSpacing = 1.sp,
+            modifier = Modifier.pointerInput(enabled) {
+                if (enabled) {
+                    detectTapGestures(
+                        onDoubleTap = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            scope.launch {
+                                animatableValue.animateTo(0f, tween(300))
+                            }
+                            // We still want to notify the parent of the target value immediately or as it animates
+                            // For a smooth "return to zero" feel, we'll update the parent as it goes
+                        }
+                    )
+                }
+            }
         )
+
+        // Add a side effect to notify parent of animation progress
+        LaunchedEffect(animatableValue.value) {
+            if (animatableValue.isRunning) {
+                onValueChange(animatableValue.value)
+            }
+        }
 
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -383,12 +427,18 @@ fun HudVerticalSlider(
                             onDragStart = { offset ->
                                 if (enabled) {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    onValueChange(positionToValue(offset.y))
+                                    scope.launch {
+                                        animatableValue.snapTo(positionToValue(offset.y))
+                                        onValueChange(animatableValue.value)
+                                    }
                                 }
                             },
                             onVerticalDrag = { change, _ ->
                                 if (enabled) {
-                                    onValueChange(positionToValue(change.position.y))
+                                    scope.launch {
+                                        animatableValue.snapTo(positionToValue(change.position.y))
+                                        onValueChange(animatableValue.value)
+                                    }
                                     change.consumePositionChange()
                                 }
                             }
@@ -475,6 +525,18 @@ fun HudVerticalSlider(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 2.dp)
+                        .pointerInput(enabled) {
+                            if (enabled) {
+                                detectTapGestures(
+                                    onDoubleTap = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        scope.launch {
+                                            animatableValue.animateTo(0f, tween(300))
+                                        }
+                                    }
+                                )
+                            }
+                        }
                 )
             }
         }
@@ -841,7 +903,7 @@ fun JaxHudScreenPreviewOffline() {
     JaxHudScreen(
         robotName = "OFFLINE",
         isLinked = false,
-        motorsActive = false,
+        odomActive = false,
         batteryPercent = 0,
         cpuTemp = 0,
         videoActive = false,
@@ -858,7 +920,7 @@ fun JaxHudScreenPreviewOnline() {
     JaxHudScreen(
         robotName = "ApeX-1",
         isLinked = true,
-        motorsActive = true,
+        odomActive = true,
         imuActive = true,
         cameraActive = true,
         batteryPercent = 88,

@@ -40,6 +40,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,9 +62,13 @@ import com.example.jaxgamepad.RosbridgeClient
 import com.example.jaxgamepad.SettingsRockerRow
 import com.example.jaxgamepad.formatUptime
 import com.example.jaxgamepad.ui.theme.MyColors
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 
 @Composable
 fun JaxDriverScreen(
@@ -87,8 +92,12 @@ fun JaxDriverScreen(
     var showTerminateVerify by remember { mutableStateOf(false) }
     var reconnectNonce by remember { mutableIntStateOf(0) }
 
+    val currentOnRobotChange by rememberUpdatedState(onRobotChange)
+    val latestRobot by rememberUpdatedState(currentRobot)
+
     ros.isConnected
     val sessionBaseUptime = remember(currentRobot.name) { currentRobot.totalUptimeSeconds }
+    val baseDistance = remember(currentRobot.name) { currentRobot.totalDistanceMeters }
     var sessionSeconds by remember(currentRobot.name) { mutableLongStateOf(0L) }
     var sessionRunning by remember(currentRobot.name) { mutableStateOf(false) }
     var lastSavedSessionSeconds by remember(currentRobot.name) { mutableLongStateOf(0L) }
@@ -109,19 +118,49 @@ fun JaxDriverScreen(
     var videoButtonActive by remember(currentRobot.videoUrl) { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
+    var cameraServerOnline by remember { mutableStateOf(false) }
+
+    LaunchedEffect(currentRobot.videoUrl) {
+        val url = currentRobot.videoUrl
+        if (url.isBlank()) {
+            cameraServerOnline = false
+            return@LaunchedEffect
+        }
+
+        val client = OkHttpClient.Builder()
+            .connectTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+
+        while (true) {
+            val isOnline = withContext(Dispatchers.IO) {
+                try {
+                    // Using a GET request but closing it immediately to check server life
+                    val request = Request.Builder().url(url).get().build()
+                    client.newCall(request).execute().use { 
+                        it.isSuccessful || it.code == 401 
+                    }
+                } catch (e: Exception) {
+                    false
+                }
+            }
+            cameraServerOnline = isOnline
+            delay(5000) // Check more frequently (5s) for better responsiveness
+        }
+    }
 
     LaunchedEffect(currentRobot.rosAddress, reconnectNonce) {
         if (currentRobot.rosAddress.isNotBlank()) {
             ros.disconnect()
             ros.connect("ws://${currentRobot.rosAddress}") {
-                ros.advertiseIfNeeded(currentRobot)
-                ros.subscribeToTelemetry(currentRobot)
+                ros.advertiseIfNeeded(latestRobot)
+                ros.subscribeToTelemetry(latestRobot)
             }
         }
     }
 
-    DisposableEffect(currentRobot) {
-        onDispose { ros.clearTelemetrySubscriptions(currentRobot) }
+    DisposableEffect(currentRobot.name) {
+        onDispose { ros.clearTelemetrySubscriptions(latestRobot) }
     }
 
     DisposableEffect(
@@ -169,8 +208,8 @@ fun JaxDriverScreen(
             sessionRunning = false
 
             if (wasConnected && sessionSeconds > lastSavedSessionSeconds) {
-                onRobotChange(
-                    currentRobot.copy(
+                currentOnRobotChange(
+                    latestRobot.copy(
                         totalUptimeSeconds = sessionBaseUptime + sessionSeconds
                     )
                 )
@@ -187,9 +226,10 @@ fun JaxDriverScreen(
             sessionSeconds += 1L
 
             if (sessionSeconds - lastSavedSessionSeconds >= 10L) {
-                onRobotChange(
-                    currentRobot.copy(
-                        totalUptimeSeconds = sessionBaseUptime + sessionSeconds
+                currentOnRobotChange(
+                    latestRobot.copy(
+                        totalUptimeSeconds = sessionBaseUptime + sessionSeconds,
+                        totalDistanceMeters = baseDistance + ros.totalDistance
                     )
                 )
                 lastSavedSessionSeconds = sessionSeconds
@@ -199,10 +239,11 @@ fun JaxDriverScreen(
 
     DisposableEffect(currentRobot.name) {
         onDispose {
-            if (sessionSeconds > lastSavedSessionSeconds) {
-                onRobotChange(
-                    currentRobot.copy(
-                        totalUptimeSeconds = sessionBaseUptime + sessionSeconds
+            if (sessionSeconds > lastSavedSessionSeconds || ros.totalDistance > 0) {
+                currentOnRobotChange(
+                    latestRobot.copy(
+                        totalUptimeSeconds = sessionBaseUptime + sessionSeconds,
+                        totalDistanceMeters = baseDistance + ros.totalDistance
                     )
                 )
             }
@@ -301,6 +342,12 @@ fun JaxDriverScreen(
         robotName = currentRobot.name,
         sessionTimeText = liveSessionText,
         batteryPercent = ros.lastBatteryPercent ?: 0,
+        cpuTemp = ros.lastCpuTemp ?: 0,
+        isLinked = ros.isConnected,
+        odomActive = ros.isOdomActive,
+        totalDistance = baseDistance + ros.totalDistance,
+        imuActive = ros.isImuActive,
+        cameraActive = cameraServerOnline,
         selectedMode = ros.lastModeText ?: currentRobot.modes.firstOrNull()?.command ?: "walk",
         modes = currentRobot.modes,
         enabledIndicators = activeIndicators,
@@ -309,7 +356,6 @@ fun JaxDriverScreen(
         heightSliderValue = bodyHeightZ.toFloat(),
         videoActive = videoButtonActive,
         hapticsEnabled = hapticsEnabled,
-        isLinked = ros.isConnected,
         onVideoToggle = { enabled ->
             videoButtonActive = enabled
             videoLoadedManually = enabled
@@ -331,15 +377,20 @@ fun JaxDriverScreen(
         videoFeed = {
             VideoFeedContainer(
                 modifier = Modifier.fillMaxSize(),
-                hatchOpen = videoButtonActive && videoLoadedManually,
+                hatchOpen = videoButtonActive && (videoLoadedManually || videoError != null),
                 errorText = videoError,
                 videoUrl = currentRobot.videoUrl
             ) {
                 if (videoButtonActive) {
                     MjpegWebView(
                         url = currentRobot.videoUrl,
-                        onLoadingStateChanged = { _, error ->
-                            videoError = error
+                        onLoadingStateChanged = { loaded, error ->
+                            if (loaded) {
+                                videoError = null
+                                cameraServerOnline = true // Force LED on if webview succeeds
+                            } else if (error != null) {
+                                videoError = error
+                            }
                         },
                         onUserInteraction = reHideSystemBars
                     )
@@ -365,7 +416,7 @@ fun VideoFeedContainer(
     ) {
         videoContent()
 
-        if (hatchOpen) {
+        if (hatchOpen && (errorText != null || videoUrl.isBlank())) {
             Column(
                 modifier = Modifier.align(Alignment.Center),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -512,7 +563,7 @@ fun SettingsDialog(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    val leds = listOf(HudIndicator.ROS_LINK, HudIndicator.MOTORS, HudIndicator.IMU, HudIndicator.CAMERA)
+                    val leds = listOf(HudIndicator.ROS_LINK, HudIndicator.ODOM, HudIndicator.IMU, HudIndicator.CAMERA)
                     leds.forEach { indicator ->
                         IndicatorRockerRow(indicator, activeIndicators, onToggleIndicator)
                     }
@@ -546,6 +597,12 @@ fun MjpegWebView(
                 layoutParams = android.view.ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
                 setBackgroundColor(android.graphics.Color.BLACK)
                 webViewClient = object : WebViewClient() {
+                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                        super.onPageStarted(view, url, favicon)
+                        // Reset error on start
+                        onLoadingStateChanged(false, null)
+                    }
+
                     override fun onPageFinished(view: WebView?, url: String?) {
                         onLoadingStateChanged(true, null)
                     }
@@ -555,13 +612,19 @@ fun MjpegWebView(
                         request: WebResourceRequest?,
                         error: WebResourceError?
                     ) {
+                        // Ignore subresource errors, focus on the main stream
                         if (request?.isForMainFrame == true) {
-                            onLoadingStateChanged(false, error?.description?.toString())
+                            val desc = error?.description?.toString() ?: "Connection failed"
+                            onLoadingStateChanged(false, desc)
                             view?.visibility = android.view.View.INVISIBLE
                         }
                     }
                 }
                 settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                settings.loadWithOverviewMode = true
+                settings.useWideViewPort = true
+                
                 setOnTouchListener { _, _ ->
                     onUserInteraction()
                     false
@@ -571,7 +634,9 @@ fun MjpegWebView(
         },
         update = {
             it.visibility = android.view.View.VISIBLE
-            it.loadUrl(url)
+            if (it.url != url) {
+                it.loadUrl(url)
+            }
         },
         modifier = modifier
     )

@@ -436,8 +436,11 @@ fun RobotSetupScreen(
             var modeTopic by remember(editingRobot) { mutableStateOf(initial.modeTopic) }
             var batteryTopic by remember(editingRobot) { mutableStateOf(initial.batteryTopic) }
             var imuTopic by remember(editingRobot) { mutableStateOf(initial.imuTopic) }
+            var cpuTempTopic by remember(editingRobot) { mutableStateOf(initial.cpuTempTopic) }
             var odomTopic by remember(editingRobot) { mutableStateOf(initial.odomTopic) }
             var jointStateTopic by remember(editingRobot) { mutableStateOf(initial.jointStateTopic) }
+
+            var enabledIndicators by remember(editingRobot) { mutableStateOf(initial.enabledIndicators) }
 
             val modes = remember(editingRobot) {
                 mutableStateListOf<RobotMode>().apply { addAll(initial.modes) }
@@ -727,6 +730,7 @@ fun RobotSetupScreen(
                                                         modeTopic = disc.modeTopic
                                                         batteryTopic = disc.batteryTopic
                                                         imuTopic = disc.imuTopic
+                                                        cpuTempTopic = disc.cpuTempTopic
                                                         odomTopic = disc.odomTopic
                                                         jointStateTopic = disc.jointStateTopic
                                                         discoverStatus = "SYNC COMPLETE"
@@ -783,6 +787,17 @@ fun RobotSetupScreen(
                                 ),
                                 placeholder = "Select Topic...",
                                 onSelected = { imuTopic = it }
+                            )
+                            TopicBindingDropdown(
+                                title = "CPU TEMP",
+                                selected = cpuTempTopic,
+                                options = buildTopicOptions(
+                                    allDiscoveredTopics,
+                                    listOf("std_msgs/msg/Float32", "sensor_msgs/msg/Temperature"),
+                                    standardOption = TopicBinding("/cpu_temperature", "std_msgs/msg/Float32")
+                                ),
+                                placeholder = "Select Topic...",
+                                onSelected = { cpuTempTopic = it }
                             )
                             TopicBindingDropdown(
                                 title = "ODOM",
@@ -918,10 +933,11 @@ fun RobotSetupScreen(
                                     modeTopic = modeTopic,
                                     batteryTopic = batteryTopic,
                                     imuTopic = imuTopic,
+                                    cpuTempTopic = cpuTempTopic,
                                     odomTopic = odomTopic,
                                     jointStateTopic = jointStateTopic,
                                     modes = modes.toList(),
-                                    enabledIndicators = initial.enabledIndicators,
+                                    enabledIndicators = enabledIndicators,
                                     totalUptimeSeconds = initial.totalUptimeSeconds,
                                     totalDistanceMeters = initial.totalDistanceMeters,
                                     invertForwardBack = invertForwardBack,

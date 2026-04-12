@@ -263,6 +263,12 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
                     // Stay on the dialog to show the success state/profile details
                 }.onFailure { e ->
                     Log.e("GOOGLE_AUTH", "Sign in failed", e)
+                    val message = when (e) {
+                        is androidx.credentials.exceptions.GetCredentialCancellationException -> "LOGIN_CANCELLED_BY_USER"
+                        is androidx.credentials.exceptions.NoCredentialException -> "NO_GOOGLE_ACCOUNT_FOUND_ON_DEVICE"
+                        else -> "AUTH_SYSTEM_ERROR: ${e.localizedMessage ?: "UNKNOWN"}"
+                    }
+                    android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
                 }
             }
         },
@@ -344,8 +350,11 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
                             list[idx] = normalizedRobot
                             savedRobots = list
                             robotManager.saveRobots(list, ownerUid)
+                            // Sync to cloud if signed in
+                            if (signedInUser != null) {
+                                saveRobotConfigToFirestore(normalizedRobot)
+                            }
                         } else {
-                            // If not found by ID (shouldn't happen with stable IDs), try name or add it
                             val nameIdx = list.indexOfFirst { it.name == normalizedRobot.name }
                             if (nameIdx != -1) {
                                 list[nameIdx] = normalizedRobot
@@ -354,6 +363,9 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
                             }
                             savedRobots = list
                             robotManager.saveRobots(list, ownerUid)
+                            if (signedInUser != null) {
+                                saveRobotConfigToFirestore(normalizedRobot)
+                            }
                         }
                     },
                     onHapticsChange = { hapticsEnabled = it },

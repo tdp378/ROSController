@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">ROS Controller</string>
+    <string name="default_web_client_id">728664292406-vqdmgipg82n95ffbhq18as5eki65mlqr.apps.googleusercontent.com</string>
 </resources>

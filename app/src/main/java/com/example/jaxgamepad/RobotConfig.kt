@@ -23,6 +23,7 @@ data class RobotConfig(
     val modeTopic: TopicBinding? = null,
     val batteryTopic: TopicBinding? = null,
     val imuTopic: TopicBinding? = null,
+    val cpuTempTopic: TopicBinding? = null,
     val odomTopic: TopicBinding? = null,
     val jointStateTopic: TopicBinding? = null,
 

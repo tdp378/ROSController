@@ -24,6 +24,7 @@ data class DiscoveredRobotTopics(
     val modeTopic: TopicBinding? = null,
     val batteryTopic: TopicBinding? = null,
     val imuTopic: TopicBinding? = null,
+    val cpuTempTopic: TopicBinding? = null,
     val odomTopic: TopicBinding? = null,
     val jointStateTopic: TopicBinding? = null
 )
@@ -38,6 +39,10 @@ class RosbridgeClient {
     private val activeSubscriptions =
         mutableMapOf<String, (JSONObject) -> Unit>()
 
+    private fun normalizeTopic(topic: String): String {
+        return if (topic.startsWith("/")) topic else "/$topic"
+    }
+
     var isConnected by mutableStateOf(false)
         private set
 
@@ -48,6 +53,21 @@ class RosbridgeClient {
         private set
 
     var lastModeText by mutableStateOf<String?>(null)
+        private set
+
+    var isImuActive by mutableStateOf(false)
+        private set
+
+    var isOdomActive by mutableStateOf(false)
+        private set
+
+    var totalDistance by mutableStateOf(0.0)
+        private set
+
+    private var lastX: Double? = null
+    private var lastY: Double? = null
+
+    var lastCpuTemp by mutableStateOf<Int?>(null)
         private set
 
     fun connect(url: String, onConnected: (() -> Unit)? = null) {
@@ -73,18 +93,32 @@ class RosbridgeClient {
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
                 isConnected = false
                 statusText = "Closing"
+                resetTelemetry()
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 isConnected = false
                 statusText = "Disconnected"
+                resetTelemetry()
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 isConnected = false
                 statusText = "Failed: ${t.message ?: "Unknown error"}"
+                resetTelemetry()
             }
         })
+    }
+
+    private fun resetTelemetry() {
+        isImuActive = false
+        isOdomActive = false
+        lastX = null
+        lastY = null
+        lastBatteryPercent = null
+        lastModeText = null
+        lastCpuTemp = null
+        activeSubscriptions.clear()
     }
 
     fun disconnect() {
@@ -96,6 +130,8 @@ class RosbridgeClient {
         socket = null
         isConnected = false
         statusText = "Disconnected"
+        resetTelemetry()
+        totalDistance = 0.0
         pendingServiceCalls.clear()
     }
 
@@ -108,9 +144,11 @@ class RosbridgeClient {
         if (!isConnected || binding == null) return
         if (binding.name.isBlank() || binding.type.isBlank()) return
 
+        val normalizedName = normalizeTopic(binding.name)
+
         val msg = JSONObject().apply {
             put("op", "advertise")
-            put("topic", binding.name)
+            put("topic", normalizedName)
             put("type", binding.type)
         }
 
@@ -131,7 +169,7 @@ class RosbridgeClient {
 
         val msg = JSONObject().apply {
             put("op", "publish")
-            put("topic", binding.name)
+            put("topic", normalizeTopic(binding.name))
             put(
                 "msg",
                 JSONObject().apply {
@@ -164,7 +202,7 @@ class RosbridgeClient {
 
         val msg = JSONObject().apply {
             put("op", "publish")
-            put("topic", binding.name)
+            put("topic", normalizeTopic(binding.name))
             put(
                 "msg",
                 JSONObject().apply {
@@ -200,12 +238,80 @@ class RosbridgeClient {
                 lastModeText = msg.optString("data", null)
             }
         }
+
+        robot.imuTopic?.let { binding ->
+            subscribe(binding.name, binding.type) { _ ->
+                isImuActive = true
+            }
+        }
+
+        robot.odomTopic?.let { binding ->
+            subscribe(binding.name, binding.type) { msg ->
+                isOdomActive = true
+
+                // Support both nav_msgs/Odometry (pose.pose.position) and geometry_msgs/PoseStamped (pose.position)
+                val pose = msg.optJSONObject("pose")
+                val position = if (pose != null) {
+                    if (pose.has("pose")) {
+                        // nav_msgs/Odometry structure
+                        pose.optJSONObject("pose")?.optJSONObject("position")
+                    } else {
+                        // geometry_msgs/PoseStamped structure or direct position
+                        pose.optJSONObject("position")
+                    }
+                } else {
+                    null
+                }
+
+                if (position != null) {
+                    val x = position.optDouble("x", Double.NaN)
+                    val y = position.optDouble("y", Double.NaN)
+
+                    if (!x.isNaN() && !y.isNaN()) {
+                        if (lastX != null && lastY != null) {
+                            val dx = x - lastX!!
+                            val dy = y - lastY!!
+                            val distance = kotlin.math.sqrt(dx * dx + dy * dy)
+                            
+                            // Log small movements for diagnostics
+                            if (distance > 0.001) {
+                                android.util.Log.d("RosbridgeClient", "Odom movement: dx=${"%.4f".format(dx)}, dy=${"%.4f".format(dy)}, dist=${"%.4f".format(distance)}")
+                            }
+
+                            if (distance < 5.0) { // Filter out jumps (e.g., on reset)
+                                if (distance > 0.001) { // deadband
+                                    totalDistance += distance
+                                }
+                            } else {
+                                android.util.Log.d("RosbridgeClient", "Ignored large odom jump: $distance")
+                            }
+                        }
+                        lastX = x
+                        lastY = y
+                    }
+                } else {
+                    android.util.Log.w("RosbridgeClient", "Received odom but could not find position in: $msg")
+                }
+            }
+        }
+
+        robot.cpuTempTopic?.let { binding ->
+            subscribe(binding.name, binding.type) { msg ->
+                val temp = when {
+                    msg.has("data") -> msg.optDouble("data", 0.0)
+                    msg.has("temperature") -> msg.optDouble("temperature", 0.0)
+                    else -> 0.0
+                }
+                lastCpuTemp = temp.toInt()
+            }
+        }
     }
 
     fun clearTelemetrySubscriptions(robot: RobotConfig) {
         robot.batteryTopic?.let { unsubscribe(it.name) }
         robot.modeTopic?.let { unsubscribe(it.name) }
         robot.imuTopic?.let { unsubscribe(it.name) }
+        robot.cpuTempTopic?.let { unsubscribe(it.name) }
         robot.odomTopic?.let { unsubscribe(it.name) }
         robot.jointStateTopic?.let { unsubscribe(it.name) }
     }
@@ -216,12 +322,20 @@ class RosbridgeClient {
         onMessage: (JSONObject) -> Unit
     ) {
         if (!isConnected) return
+        val normalizedTopic = normalizeTopic(topic)
 
-        activeSubscriptions[topic] = onMessage
+        // Prevent redundant subscriptions
+        if (activeSubscriptions.containsKey(normalizedTopic)) {
+            android.util.Log.d("RosbridgeClient", "Already subscribed to $normalizedTopic, updating callback.")
+            activeSubscriptions[normalizedTopic] = onMessage
+            return
+        }
+
+        activeSubscriptions[normalizedTopic] = onMessage
 
         val msg = JSONObject().apply {
             put("op", "subscribe")
-            put("topic", topic)
+            put("topic", normalizedTopic)
             put("type", type)
             put("queue_length", 1)
             put("throttle_rate", 100)
@@ -231,13 +345,14 @@ class RosbridgeClient {
     }
 
     fun unsubscribe(topic: String) {
-        if (!isConnected) return
+        val normalizedTopic = normalizeTopic(topic)
+        activeSubscriptions.remove(normalizedTopic)
 
-        activeSubscriptions.remove(topic)
+        if (!isConnected) return
 
         val msg = JSONObject().apply {
             put("op", "unsubscribe")
-            put("topic", topic)
+            put("topic", normalizedTopic)
         }
 
         socket?.send(msg.toString())
@@ -360,6 +475,12 @@ class RosbridgeClient {
                     it.name.contains("imu", ignoreCase = true)
                 }?.toBinding()
 
+        val cpuTempTopic =
+            allTopics.firstOrNull {
+                (it.name.contains("cpu", ignoreCase = true) || it.name.contains("temp", ignoreCase = true)) &&
+                        (it.type == "std_msgs/msg/Float32" || it.type == "sensor_msgs/msg/Temperature")
+            }?.toBinding()
+
         val odomTopic =
             findByExactType("nav_msgs/msg/Odometry")
                 ?: allTopics.firstOrNull {
@@ -378,6 +499,7 @@ class RosbridgeClient {
             modeTopic = modeTopic,
             batteryTopic = batteryTopic,
             imuTopic = imuTopic,
+            cpuTempTopic = cpuTempTopic,
             odomTopic = odomTopic,
             jointStateTopic = jointStateTopic
         )
@@ -430,8 +552,9 @@ class RosbridgeClient {
 
                 "publish" -> {
                     val topic = json.optString("topic")
+                    val normalizedTopic = normalizeTopic(topic)
                     val msg = json.optJSONObject("msg") ?: return
-                    activeSubscriptions[topic]?.invoke(msg)
+                    activeSubscriptions[normalizedTopic]?.invoke(msg)
                 }
             }
         } catch (e: Exception) {

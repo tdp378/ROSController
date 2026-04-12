@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "728664292406-j85dpu7jhfkrpb1rp8kph7e76hfhkfcp.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.jaxgamepad",
+            "certificate_hash": "bf732a576a45ffca7a712b1d8c1e0d9f2db7546b"
+          }
+        },
+        {
           "client_id": "728664292406-vqdmgipg82n95ffbhq18as5eki65mlqr.apps.googleusercontent.com",
           "client_type": 3
         }

@@ -29,6 +29,7 @@ class RobotManager(context: Context) {
                 put("modeTopic", robot.modeTopic?.toJson())
                 put("batteryTopic", robot.batteryTopic?.toJson())
                 put("imuTopic", robot.imuTopic?.toJson())
+                put("cpuTempTopic", robot.cpuTempTopic?.toJson())
                 put("odomTopic", robot.odomTopic?.toJson())
                 put("jointStateTopic", robot.jointStateTopic?.toJson())
 
@@ -100,6 +101,7 @@ class RobotManager(context: Context) {
                         modeTopic = obj.optJSONObject("modeTopic")?.toTopicBinding(),
                         batteryTopic = obj.optJSONObject("batteryTopic")?.toTopicBinding(),
                         imuTopic = obj.optJSONObject("imuTopic")?.toTopicBinding(),
+                        cpuTempTopic = obj.optJSONObject("cpuTempTopic")?.toTopicBinding(),
                         odomTopic = obj.optJSONObject("odomTopic")?.toTopicBinding(),
                         jointStateTopic = obj.optJSONObject("jointStateTopic")?.toTopicBinding(),
                         modes = obj.optJSONArray("modes")?.toRobotModes() ?: emptyList(),
