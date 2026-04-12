@@ -52,6 +52,9 @@ class RosbridgeClient {
     var lastBatteryPercent by mutableStateOf<Int?>(null)
         private set
 
+    var lastBatteryVoltage by mutableStateOf<Double?>(null)
+        private set
+
     var lastModeText by mutableStateOf<String?>(null)
         private set
 
@@ -215,11 +218,20 @@ class RosbridgeClient {
     }
 
     fun subscribeToTelemetry(robot: RobotConfig) {
+        // Reset state for new robot
+        isImuActive = false
+        isOdomActive = false
+
         robot.batteryTopic?.let { binding ->
             subscribe(binding.name, binding.type) { msg ->
+                if (msg.has("voltage")) {
+                    lastBatteryVoltage = msg.optDouble("voltage")
+                }
+
                 val percentage = when {
                     msg.has("percentage") -> {
                         val raw = msg.optDouble("percentage", Double.NaN)
+                        // If percentage is 0.0, we'll keep it as 0, but HUD will now show voltage as fallback
                         if (raw.isNaN()) null else (raw * 100.0).toInt().coerceIn(0, 100)
                     }
                     msg.has("capacity") -> {
@@ -248,7 +260,7 @@ class RosbridgeClient {
         robot.odomTopic?.let { binding ->
             subscribe(binding.name, binding.type) { msg ->
                 isOdomActive = true
-
+                
                 // Support both nav_msgs/Odometry (pose.pose.position) and geometry_msgs/PoseStamped (pose.position)
                 val pose = msg.optJSONObject("pose")
                 val position = if (pose != null) {
@@ -358,7 +370,10 @@ class RosbridgeClient {
         socket?.send(msg.toString())
     }
 
-    fun discoverTopics(onResult: (Result<DiscoveredRobotTopics>) -> Unit) {
+    fun discoverTopics(
+        nameHint: String? = null,
+        onResult: (Result<DiscoveredRobotTopics>) -> Unit
+    ) {
         if (!isConnected) {
             onResult(Result.failure(IllegalStateException("Not connected")))
             return
@@ -377,7 +392,7 @@ class RosbridgeClient {
                                         topicsResponse = topicNamesResponse,
                                         topicTypesResponse = topicTypesResponse
                                     )
-                                    val suggestions = autoDetectTopics(allTopics)
+                                    val suggestions = autoDetectTopics(allTopics, nameHint)
                                     onResult(Result.success(suggestions))
                                 } catch (e: Exception) {
                                     onResult(Result.failure(e))
@@ -435,13 +450,36 @@ class RosbridgeClient {
             .sortedBy { it.name.lowercase() }
     }
 
-    private fun autoDetectTopics(allTopics: List<RosTopicInfo>): DiscoveredRobotTopics {
+    private fun autoDetectTopics(
+        allTopics: List<RosTopicInfo>,
+        robotNameHint: String? = null
+    ): DiscoveredRobotTopics {
+        val sanitizedHint = robotNameHint?.trim()?.lowercase()?.replace(" ", "_")
+
         fun findByExactType(type: String): TopicBinding? {
+            // If we have a hint, prefer topics containing the hint
+            if (!sanitizedHint.isNullOrBlank()) {
+                val matchWithHint = allTopics.firstOrNull { 
+                    it.type == type && it.name.lowercase().contains(sanitizedHint) 
+                }
+                if (matchWithHint != null) return matchWithHint.toBinding()
+            }
+            
             val match = allTopics.firstOrNull { it.type == type }
             return match?.toBinding()
         }
 
         fun findByNameHintAndType(nameHint: String, type: String): TopicBinding? {
+            // If we have a robot name hint, try matching BOTH robot name and topic hint
+            if (!sanitizedHint.isNullOrBlank()) {
+                val bestMatch = allTopics.firstOrNull {
+                    it.type == type && 
+                    it.name.lowercase().contains(sanitizedHint) && 
+                    it.name.lowercase().contains(nameHint.lowercase())
+                }
+                if (bestMatch != null) return bestMatch.toBinding()
+            }
+
             val match = allTopics.firstOrNull {
                 it.type == type && it.name.contains(nameHint, ignoreCase = true)
             }
@@ -455,28 +493,47 @@ class RosbridgeClient {
         val modeTopic =
             findByNameHintAndType("mode", "std_msgs/msg/String")
                 ?: allTopics.firstOrNull {
+                    val isStringType = it.type == "std_msgs/msg/String"
+                    val hasModeOrState = it.name.contains("mode", ignoreCase = true) || it.name.contains("state", ignoreCase = true)
+                    val matchesRobotHint = sanitizedHint == null || it.name.lowercase().contains(sanitizedHint)
+                    
+                    isStringType && hasModeOrState && matchesRobotHint
+                }?.toBinding()
+                ?: allTopics.firstOrNull {
                     it.type == "std_msgs/msg/String" &&
-                            (
-                                    it.name.contains("mode", ignoreCase = true) ||
-                                            it.name.contains("state", ignoreCase = true)
-                                    )
+                    (it.name.contains("mode", ignoreCase = true) || it.name.contains("state", ignoreCase = true))
                 }?.toBinding()
 
         val batteryTopic =
             findByExactType("sensor_msgs/msg/BatteryState")
                 ?: allTopics.firstOrNull {
-                    it.name.contains("battery", ignoreCase = true) ||
-                            it.name.contains("power", ignoreCase = true)
+                    val isBattery = it.name.contains("battery", ignoreCase = true) || it.name.contains("power", ignoreCase = true)
+                    val matchesRobotHint = sanitizedHint == null || it.name.lowercase().contains(sanitizedHint)
+                    isBattery && matchesRobotHint
+                }?.toBinding()
+                ?: allTopics.firstOrNull {
+                    it.name.contains("battery", ignoreCase = true) || it.name.contains("power", ignoreCase = true)
                 }?.toBinding()
 
         val imuTopic =
             findByExactType("sensor_msgs/msg/Imu")
+                ?: allTopics.firstOrNull {
+                    val isImu = it.name.contains("imu", ignoreCase = true)
+                    val matchesRobotHint = sanitizedHint == null || it.name.lowercase().contains(sanitizedHint)
+                    isImu && matchesRobotHint
+                }?.toBinding()
                 ?: allTopics.firstOrNull {
                     it.name.contains("imu", ignoreCase = true)
                 }?.toBinding()
 
         val cpuTempTopic =
             allTopics.firstOrNull {
+                val isTempType = it.type == "std_msgs/msg/Float32" || it.type == "sensor_msgs/msg/Temperature"
+                val hasTempHint = it.name.contains("cpu", ignoreCase = true) || it.name.contains("temp", ignoreCase = true)
+                val matchesRobotHint = sanitizedHint == null || it.name.lowercase().contains(sanitizedHint)
+                isTempType && hasTempHint && matchesRobotHint
+            }?.toBinding()
+            ?: allTopics.firstOrNull {
                 (it.name.contains("cpu", ignoreCase = true) || it.name.contains("temp", ignoreCase = true)) &&
                         (it.type == "std_msgs/msg/Float32" || it.type == "sensor_msgs/msg/Temperature")
             }?.toBinding()
@@ -484,11 +541,21 @@ class RosbridgeClient {
         val odomTopic =
             findByExactType("nav_msgs/msg/Odometry")
                 ?: allTopics.firstOrNull {
+                    val isOdom = it.name.contains("odom", ignoreCase = true)
+                    val matchesRobotHint = sanitizedHint == null || it.name.lowercase().contains(sanitizedHint)
+                    isOdom && matchesRobotHint
+                }?.toBinding()
+                ?: allTopics.firstOrNull {
                     it.name.contains("odom", ignoreCase = true)
                 }?.toBinding()
 
         val jointStateTopic =
             findByExactType("sensor_msgs/msg/JointState")
+                ?: allTopics.firstOrNull {
+                    val isJoint = it.name.contains("joint_states", ignoreCase = true)
+                    val matchesRobotHint = sanitizedHint == null || it.name.lowercase().contains(sanitizedHint)
+                    isJoint && matchesRobotHint
+                }?.toBinding()
                 ?: allTopics.firstOrNull {
                     it.name.contains("joint_states", ignoreCase = true)
                 }?.toBinding()

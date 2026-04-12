@@ -2,8 +2,10 @@ package com.example.jaxgamepad.ui.screens
 
 import android.annotation.SuppressLint
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
+import android.webkit.JavascriptInterface
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -12,6 +14,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -23,13 +26,17 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SignalWifiStatusbarConnectedNoInternet4
 import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -47,6 +54,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -113,41 +121,12 @@ fun JaxDriverScreen(
         }.toSet()
     }
 
-    var videoLoadedManually by remember(currentRobot.name) { mutableStateOf(false) }
+    var videoRefreshNonce by remember { mutableIntStateOf(0) }
     var videoError by remember(currentRobot.videoUrl) { mutableStateOf<String?>(null) }
     var videoButtonActive by remember(currentRobot.videoUrl) { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
     var cameraServerOnline by remember { mutableStateOf(false) }
-
-    LaunchedEffect(currentRobot.videoUrl) {
-        val url = currentRobot.videoUrl
-        if (url.isBlank()) {
-            cameraServerOnline = false
-            return@LaunchedEffect
-        }
-
-        val client = OkHttpClient.Builder()
-            .connectTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(3, java.util.concurrent.TimeUnit.SECONDS)
-            .build()
-
-        while (true) {
-            val isOnline = withContext(Dispatchers.IO) {
-                try {
-                    // Using a GET request but closing it immediately to check server life
-                    val request = Request.Builder().url(url).get().build()
-                    client.newCall(request).execute().use { 
-                        it.isSuccessful || it.code == 401 
-                    }
-                } catch (e: Exception) {
-                    false
-                }
-            }
-            cameraServerOnline = isOnline
-            delay(5000) // Check more frequently (5s) for better responsiveness
-        }
-    }
 
     LaunchedEffect(currentRobot.rosAddress, reconnectNonce) {
         if (currentRobot.rosAddress.isNotBlank()) {
@@ -342,12 +321,15 @@ fun JaxDriverScreen(
         robotName = currentRobot.name,
         sessionTimeText = liveSessionText,
         batteryPercent = ros.lastBatteryPercent ?: 0,
+        batteryVoltage = ros.lastBatteryVoltage,
         cpuTemp = ros.lastCpuTemp ?: 0,
         isLinked = ros.isConnected,
-        odomActive = ros.isOdomActive,
+        odomActive = ros.isOdomActive && currentRobot.odomTopic != null,
         totalDistance = baseDistance + ros.totalDistance,
-        imuActive = ros.isImuActive,
+        imuActive = ros.isImuActive && currentRobot.imuTopic != null,
         cameraActive = cameraServerOnline,
+        batteryActive = ros.isConnected && currentRobot.batteryTopic != null,
+        cpuActive = ros.isConnected && currentRobot.cpuTempTopic != null,
         selectedMode = ros.lastModeText ?: currentRobot.modes.firstOrNull()?.command ?: "walk",
         modes = currentRobot.modes,
         enabledIndicators = activeIndicators,
@@ -358,8 +340,9 @@ fun JaxDriverScreen(
         hapticsEnabled = hapticsEnabled,
         onVideoToggle = { enabled ->
             videoButtonActive = enabled
-            videoLoadedManually = enabled
-            videoError = null
+            if (enabled) {
+                videoError = null
+            }
         },
         onLeftJoystickChanged = { x, y ->
             moveX = x.toDouble()
@@ -377,17 +360,19 @@ fun JaxDriverScreen(
         videoFeed = {
             VideoFeedContainer(
                 modifier = Modifier.fillMaxSize(),
-                hatchOpen = videoButtonActive && (videoLoadedManually || videoError != null),
+                hatchOpen = videoButtonActive,
                 errorText = videoError,
                 videoUrl = currentRobot.videoUrl
             ) {
-                if (videoButtonActive) {
+                if (currentRobot.videoUrl.isNotBlank()) {
                     MjpegWebView(
                         url = currentRobot.videoUrl,
+                        refreshNonce = videoRefreshNonce,
+                        modifier = Modifier.fillMaxSize(),
                         onLoadingStateChanged = { loaded, error ->
                             if (loaded) {
                                 videoError = null
-                                cameraServerOnline = true // Force LED on if webview succeeds
+                                cameraServerOnline = true 
                             } else if (error != null) {
                                 videoError = error
                             }
@@ -589,22 +574,26 @@ fun MjpegWebView(
     url: String,
     onLoadingStateChanged: (loaded: Boolean, error: String?) -> Unit,
     onUserInteraction: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    refreshNonce: Int = 0
 ) {
     AndroidView(
         factory = { context ->
             WebView(context).apply {
                 layoutParams = android.view.ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
                 setBackgroundColor(android.graphics.Color.BLACK)
+                
                 webViewClient = object : WebViewClient() {
-                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-                        super.onPageStarted(view, url, favicon)
-                        // Reset error on start
-                        onLoadingStateChanged(false, null)
-                    }
-
                     override fun onPageFinished(view: WebView?, url: String?) {
                         onLoadingStateChanged(true, null)
+                        // Absolute positioning is more reliable for centering + filling
+                        view?.evaluateJavascript("""
+                            (function() {
+                                var style = document.createElement('style');
+                                style.innerHTML = 'body { margin: 0; background: black; height: 100vh; width: 100vw; overflow: hidden; position: relative; } img { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 100%; height: 100%; object-fit: cover; }';
+                                document.head.appendChild(style);
+                            })()
+                        """.trimIndent(), null)
                     }
 
                     override fun onReceivedError(
@@ -612,32 +601,73 @@ fun MjpegWebView(
                         request: WebResourceRequest?,
                         error: WebResourceError?
                     ) {
-                        // Ignore subresource errors, focus on the main stream
                         if (request?.isForMainFrame == true) {
-                            val desc = error?.description?.toString() ?: "Connection failed"
-                            onLoadingStateChanged(false, desc)
-                            view?.visibility = android.view.View.INVISIBLE
+                            onLoadingStateChanged(false, error?.description?.toString() ?: "Error")
                         }
                     }
                 }
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.loadWithOverviewMode = true
-                settings.useWideViewPort = true
+                
+                settings.apply {
+                    javaScriptEnabled = true
+                    domStorageEnabled = true
+                    loadWithOverviewMode = true
+                    useWideViewPort = true
+                    mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                }
                 
                 setOnTouchListener { _, _ ->
                     onUserInteraction()
                     false
                 }
-                loadUrl(url)
+                
+                val finalUrl = if (!url.startsWith("http") && !url.startsWith("https")) "http://$url" else url
+                loadUrl(finalUrl)
+                tag = "$url-$refreshNonce"
             }
         },
         update = {
-            it.visibility = android.view.View.VISIBLE
-            if (it.url != url) {
-                it.loadUrl(url)
+            val currentTag = "$url-$refreshNonce"
+            if (it.tag != currentTag) {
+                it.tag = currentTag
+                val finalUrl = if (!url.startsWith("http") && !url.startsWith("https")) "http://$url" else url
+                it.loadUrl(finalUrl)
             }
         },
         modifier = modifier
     )
+}
+
+private fun generateMjpegHtml(url: String): String {
+    if (url.isBlank()) return "<html><body style='background:black;'></body></html>"
+    val absoluteUrl = if (!url.startsWith("http")) "http://$url" else url
+
+    return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+            <style>
+                body { 
+                    margin: 0; 
+                    padding: 0; 
+                    background-color: black; 
+                    display: flex; 
+                    justify-content: center; 
+                    align-items: center; 
+                    height: 100vh; 
+                    width: 100vw; 
+                    overflow: hidden; 
+                }
+                img { 
+                    width: 100%; 
+                    height: 100%; 
+                    object-fit: cover; 
+                }
+            </style>
+        </head>
+        <body>
+            <img src="$absoluteUrl" />
+        </body>
+        </html>
+    """.trimIndent()
 }

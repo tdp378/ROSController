@@ -67,12 +67,15 @@ fun JaxHudScreen(
     robotName: String = "Jax-1",
     sessionTimeText: String = "00:00:00",
     batteryPercent: Int = 0,
+    batteryVoltage: Double? = null,
     cpuTemp: Int = 0,
     isLinked: Boolean = false,
     odomActive: Boolean = false,
     totalDistance: Double = 0.0,
     imuActive: Boolean = false,
     cameraActive: Boolean = false,
+    batteryActive: Boolean = isLinked,
+    cpuActive: Boolean = isLinked,
     leftJoystickValue: Pair<Float, Float> = 0f to 0f,
     rightJoystickValue: Pair<Float, Float> = 0f to 0f,
     heightSliderValue: Float = 0f,
@@ -201,7 +204,7 @@ fun JaxHudScreen(
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .aspectRatio(1.7f)
+                            .aspectRatio(1.777f)
                             .border(1.dp, MyColors.HudBlueD.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                             .clip(RoundedCornerShape(12.dp)),
                         color = Color.Black
@@ -226,15 +229,29 @@ fun JaxHudScreen(
                         val telemetryItems = mutableListOf<Triple<String, Color, Boolean>>().apply {
                             if (enabledIndicators.contains(HudIndicator.BATTERY)) {
                                 val batteryColor = when {
-                                    !isLinked -> MyColors.HudBlueD
-                                    batteryPercent <= 0 -> MyColors.HudBlueD // Treat 0 as no data/disconnected
-                                    batteryPercent < 20 -> HudRed
+                                    !batteryActive -> MyColors.HudBlueD
+                                    batteryPercent < 20 && (batteryVoltage == null || batteryVoltage < 19.5) -> HudRed
                                     else -> Green
                                 }
-                                add(Triple("BATTERY $batteryPercent%", batteryColor, isLinked && batteryPercent > 0))
+                                
+                                val batteryLabel = if (batteryPercent > 0) {
+                                    "BATTERY $batteryPercent%"
+                                } else if (batteryVoltage != null && batteryVoltage > 0.0) {
+                                    String.format("BATTERY %.2fV", batteryVoltage)
+                                } else {
+                                    "BATTERY 0%"
+                                }
+
+                                add(Triple(batteryLabel, batteryColor, batteryActive))
                             }
-                            if (enabledIndicators.contains(HudIndicator.CPU))
-                                add(Triple("CPU TEMP $cpuTemp°", if (!isLinked) MyColors.HudBlueD else if (cpuTemp > 75) HudRed else Green, isLinked))
+                            if (enabledIndicators.contains(HudIndicator.CPU)) {
+                                val cpuColor = when {
+                                    !cpuActive -> MyColors.HudBlueD
+                                    cpuTemp > 75 -> HudRed
+                                    else -> Green
+                                }
+                                add(Triple("CPU TEMP $cpuTemp°", cpuColor, cpuActive))
+                            }
                         }
                         StatusGroup(items = telemetryItems, alignEnd = true)
                     }
