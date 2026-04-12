@@ -228,9 +228,18 @@ fun JaxHudScreen(
                     ) {
                         val telemetryItems = mutableListOf<Triple<String, Color, Boolean>>().apply {
                             if (enabledIndicators.contains(HudIndicator.BATTERY)) {
+                                val isLow = if (batteryPercent > 0) {
+                                    batteryPercent < 20
+                                } else if (batteryVoltage != null && batteryVoltage > 0.0) {
+                                    // Threshold for 4S system (16.9V full -> 14.0V low)
+                                    batteryVoltage < 14.0
+                                } else {
+                                    false
+                                }
+
                                 val batteryColor = when {
                                     !batteryActive -> MyColors.HudBlueD
-                                    batteryPercent < 20 && (batteryVoltage == null || batteryVoltage < 19.5) -> HudRed
+                                    isLow -> HudRed
                                     else -> Green
                                 }
                                 

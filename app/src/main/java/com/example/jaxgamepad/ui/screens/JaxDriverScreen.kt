@@ -128,6 +128,16 @@ fun JaxDriverScreen(
     val scope = rememberCoroutineScope()
     var cameraServerOnline by remember { mutableStateOf(false) }
 
+    LaunchedEffect(ros.isConnected) {
+        if (ros.isConnected) {
+            // Force video reload when ROS reconnects
+            videoRefreshNonce++
+        } else {
+            // If ROS is down, we assume the camera server might be unreachable too
+            cameraServerOnline = false
+        }
+    }
+
     LaunchedEffect(currentRobot.rosAddress, reconnectNonce) {
         if (currentRobot.rosAddress.isNotBlank()) {
             ros.disconnect()
@@ -269,6 +279,7 @@ fun JaxDriverScreen(
                 if (!ros.isConnected) {
                     ros.disconnect()
                     reconnectNonce++
+                    videoRefreshNonce++ // Also refresh video on manual reconnect
                     showTerminateVerify = false
                     reHideSystemBars()
                 }
