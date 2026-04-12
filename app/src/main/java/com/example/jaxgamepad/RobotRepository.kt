@@ -110,8 +110,8 @@ fun deleteRobotConfigFromFirestore(
     }
 }
 fun syncRobotsToFirestoreForSignedInUser(robots: List<RobotConfig>) {
-    if (robots.isEmpty()) return
     val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
+    // Never sync the demo robot to the cloud
     robots.filterNot { it.isDemoRobot() }.forEach { robot ->
         saveRobotConfigToFirestore(robot.copy(ownerUid = uid))
     }
@@ -219,16 +219,21 @@ fun buildDemoRobot(ownerUid: String = RobotManager.GUEST_OWNER_UID): RobotConfig
 fun loadRobotsForOwner(robotManager: RobotManager, ownerUid: String?): List<RobotConfig> {
     val normalizedOwner = RobotManager.normalizeOwnerUid(ownerUid)
     val loaded = robotManager.loadRobots(normalizedOwner)
-    val needsDemo = loaded.isEmpty() || loaded.any { it.name.lowercase() == "jax-1" }
 
-    if (!needsDemo) {
-        return loaded
+    if (loaded == null) {
+        val demo = buildDemoRobot(normalizedOwner)
+        robotManager.saveRobots(listOf(demo), normalizedOwner)
+        return listOf(demo)
     }
 
-    val demo = buildDemoRobot(normalizedOwner)
-    val cleaned = loaded.filterNot { it.name.lowercase() == "jax-1" }
-    val withDemo = if (cleaned.any { it.isDemoRobot() }) cleaned else listOf(demo) + cleaned
+    // Rule: if there are no other (non-demo) robots, the demo robot must be present.
+    val nonDemo = loaded.filterNot { it.isDemoRobot() }
+    if (nonDemo.isEmpty()) {
+        if (loaded.any { it.isDemoRobot() }) return loaded
+        val demo = buildDemoRobot(normalizedOwner)
+        robotManager.saveRobots(listOf(demo), normalizedOwner)
+        return listOf(demo)
+    }
 
-    robotManager.saveRobots(withDemo, normalizedOwner)
-    return withDemo
+    return loaded
 }

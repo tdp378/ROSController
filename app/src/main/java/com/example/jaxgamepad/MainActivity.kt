@@ -157,7 +157,9 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
             val (status, addr) = networkInfo
             val isConnected = status == "WIFI_CONNECTED"
             val userEmail = signedInUser?.email ?: "GUEST"
-            val userName = signedInUser?.displayName ?: "GUEST"
+            val userName = signedInUser?.displayName?.takeIf { it.isNotBlank() }
+                ?: signedInUser?.email?.substringBefore("@")
+                ?: "GUEST"
 
 
             // Define the template once

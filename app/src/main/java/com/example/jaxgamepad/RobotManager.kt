@@ -66,17 +66,18 @@ class RobotManager(context: Context) {
         prefs.edit().putString(storageKeyForOwner(normalizedOwner), array.toString()).apply()
     }
 
-    fun loadRobots(ownerUid: String = GUEST_OWNER_UID): List<RobotConfig> {
+    fun loadRobots(ownerUid: String = GUEST_OWNER_UID): List<RobotConfig>? {
         val normalizedOwner = normalizeOwnerUid(ownerUid)
         val jsonString = when {
             prefs.contains(storageKeyForOwner(normalizedOwner)) ->
                 prefs.getString(storageKeyForOwner(normalizedOwner), null)
             normalizedOwner == GUEST_OWNER_UID ->
-                prefs.getString(LEGACY_STORAGE_KEY, null)
+                if (prefs.contains(LEGACY_STORAGE_KEY)) prefs.getString(LEGACY_STORAGE_KEY, null) else null
             else -> null
         }
 
-        if (jsonString.isNullOrBlank()) return emptyList()
+        if (jsonString == null) return null
+        if (jsonString.isBlank()) return emptyList()
 
         val robots = mutableListOf<RobotConfig>()
         try {
@@ -125,16 +126,15 @@ class RobotManager(context: Context) {
 
     fun mergeGuestRobotsIntoOwner(ownerUid: String): List<RobotConfig> {
         val normalizedOwner = normalizeOwnerUid(ownerUid)
-        if (normalizedOwner == GUEST_OWNER_UID) return loadRobots(GUEST_OWNER_UID)
+        if (normalizedOwner == GUEST_OWNER_UID) return loadRobots(GUEST_OWNER_UID) ?: emptyList()
 
-        val guestRobots = loadRobots(GUEST_OWNER_UID)
-            .filterNot { it.isDemoRobot() }
+        val guestRobots = (loadRobots(GUEST_OWNER_UID) ?: emptyList())
 
         if (guestRobots.isEmpty()) {
-            return loadRobots(normalizedOwner)
+            return loadRobots(normalizedOwner) ?: emptyList()
         }
 
-        val existingUserRobots = loadRobots(normalizedOwner)
+        val existingUserRobots = loadRobots(normalizedOwner) ?: emptyList()
         val mergedById = linkedMapOf<String, RobotConfig>()
 
         existingUserRobots.forEach { robot ->

@@ -750,18 +750,7 @@ fun RobotSetupScreen(
 
                             Spacer(modifier = Modifier.height(4.dp))
 
-                            ClearTopicsButton(
-                                onClick = {
-                                    cmdVelTopic = null
-                                    modeTopic = null
-                                    batteryTopic = null
-                                    imuTopic = null
-                                    cpuTempTopic = null
-                                    odomTopic = null
-                                    jointStateTopic = null
-                                    discoverStatus = "CONFIG PURGED"
-                                }
-                            )
+
 
                             TopicBindingDropdown(
                                 title = "CMD VEL",
@@ -1127,39 +1116,7 @@ fun ModeEditorRow(
 
 
 
-@Composable
-fun ClearTopicsButton(
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(50.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color.Red.copy(alpha = 0.05f))
-            .border(1.dp, Color.Red.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = Icons.Default.Delete,
-                contentDescription = null,
-                tint = Color.Red.copy(alpha = 0.6f),
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = "CLEAR ALL TOPIC BINDINGS".toCyber,
-                color = Color.Red.copy(alpha = 0.8f),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp
-            )
-        }
-    }
-}
+
 
 
 @Composable

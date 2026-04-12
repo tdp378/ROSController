@@ -30,11 +30,18 @@ fun RobotSyncLogic(
             uid = ownerUid,
             onResult = { cloudRobots ->
                 val cloudBase = cloudRobots
-                    .filterNot { it.isDemoRobot() }
                     .associateBy { it.robotId }
                     .toMutableMap()
 
-                val guestRobots = robotManager.loadRobots(RobotManager.GUEST_OWNER_UID)
+                // Rule: If local storage has a demo robot, we MUST keep it in the merged list.
+                // Cloud robots don't contain the demo. If it's missing from cloudBase, 
+                // but present in local, it stays.
+                val localRobots = robotManager.loadRobots(ownerUid) ?: emptyList()
+                localRobots.filter { it.isDemoRobot() }.forEach {
+                    cloudBase[it.robotId] = it
+                }
+
+                val guestRobots = (robotManager.loadRobots(RobotManager.GUEST_OWNER_UID) ?: emptyList())
                     .filterNot { it.isDemoRobot() }
 
                 guestRobots.forEach { guestRobot ->
@@ -51,11 +58,12 @@ fun RobotSyncLogic(
                 val updatedRobots = if (merged.isEmpty()) {
                     loadRobotsForOwner(robotManager, ownerUid)
                 } else {
-                    val withDemo = if (merged.any { it.isDemoRobot() }) merged else listOf(buildDemoRobot(ownerUid)) + merged
-                    robotManager.saveRobots(withDemo, ownerUid)
+                    // Only save what we have from cloud/migration. 
+                    // No longer forcing the Demo robot if other robots exist.
+                    robotManager.saveRobots(merged, ownerUid)
                     robotManager.clearOwner(RobotManager.GUEST_OWNER_UID)
-                    syncRobotsToFirestoreForSignedInUser(withDemo)
-                    withDemo
+                    syncRobotsToFirestoreForSignedInUser(merged)
+                    merged
                 }
 
                 onUpdateRobots(updatedRobots)
@@ -67,12 +75,11 @@ fun RobotSyncLogic(
             },
             onFailure = {
                 val merged = robotManager.mergeGuestRobotsIntoOwner(ownerUid)
-                val withDemo = merged.ifEmpty { loadRobotsForOwner(robotManager, ownerUid) }
-                syncRobotsToFirestoreForSignedInUser(withDemo)
-                onUpdateRobots(withDemo)
+                syncRobotsToFirestoreForSignedInUser(merged)
+                onUpdateRobots(merged)
                 onUpdateCurrentRobot(
-                    withDemo.firstOrNull { it.robotId == currentRobot.robotId }
-                        ?: withDemo.firstOrNull()
+                    merged.firstOrNull { it.robotId == currentRobot.robotId }
+                        ?: merged.firstOrNull()
                         ?: buildDemoRobot(ownerUid)
                 )
             }

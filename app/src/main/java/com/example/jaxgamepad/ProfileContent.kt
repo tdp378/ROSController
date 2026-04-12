@@ -19,6 +19,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.jaxgamepad.ui.theme.JaxGamepadTheme
+import com.google.firebase.auth.userProfileChangeRequest
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.example.jaxgamepad.ui.theme.MyColors
@@ -85,13 +86,21 @@ fun ProfileContent(
                 statusMessage = "INITIALIZING_PROFILE..."
                 auth?.createUserWithEmailAndPassword(email, password)
                     ?.addOnSuccessListener { result ->
-                        val uid = result.user?.uid.orEmpty()
-                        val profile = UserProfile(uid, email, displayName, location, "")
-                        db?.collection("users")?.document(uid)?.set(profile)
-                            ?.addOnSuccessListener {
-                                loading = false
-                                statusMessage = "PROFILE_READY"
-                                onProfileCreated(profile)
+                        val user = result.user
+                        val profileUpdates = com.google.firebase.auth.userProfileChangeRequest {
+                            this.displayName = displayName
+                        }
+                        
+                        user?.updateProfile(profileUpdates)
+                            ?.addOnCompleteListener { task ->
+                                val uid = user.uid
+                                val profile = UserProfile(uid, email, displayName, location, "")
+                                db?.collection("users")?.document(uid)?.set(profile)
+                                    ?.addOnSuccessListener {
+                                        loading = false
+                                        statusMessage = "PROFILE_READY"
+                                        onProfileCreated(profile)
+                                    }
                             }
                     }
                     ?.addOnFailureListener { e ->
