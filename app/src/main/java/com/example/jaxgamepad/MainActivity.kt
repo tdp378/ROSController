@@ -27,10 +27,12 @@ import kotlinx.coroutines.launch
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import android.util.Log
+import androidx.compose.foundation.Image
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import coil.compose.AsyncImage
 import com.example.jaxgamepad.ui.screens.JaxDriverScreen
 import com.example.jaxgamepad.ui.screens.RobotSetupScreen
@@ -61,7 +63,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-enum class Screen { Menu, Gamepad, RobotSetup }
+enum class Screen { Splash, Menu, Gamepad, RobotSetup }
 
 
 @Composable
@@ -177,17 +179,19 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
         }
     }
 
-// 2. Use one effect to bridge the gap
-    LaunchedEffect(bootScript) {
-        if (!hasBooted) {
-            // Run the typewriter animation ONLY the first time
+    var currentScreen by remember { mutableStateOf(Screen.Splash) }
+
+    // 2. Use one effect to bridge the gap
+    LaunchedEffect(bootScript, currentScreen) {
+        if (currentScreen == Screen.Menu && !hasBooted) {
+            // Run the typewriter animation ONLY the first time when we arrive at the menu
             terminalText = ""
             bootScript.forEach { char ->
                 terminalText += char
                 delay(30)
             }
             hasBooted = true
-        } else {
+        } else if (hasBooted) {
             // After the first boot, just snap to the new text instantly
             terminalText = bootScript
         }
@@ -200,7 +204,14 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
         mutableStateOf(loadRobotsForOwner(robotManager, signedInUser?.uid))
     }
 
-    var currentScreen by remember { mutableStateOf(Screen.Menu) }
+    
+    LaunchedEffect(Unit) {
+        if (currentScreen == Screen.Splash) {
+            delay(2500) // Show splash for 2.5 seconds
+            currentScreen = Screen.Menu
+        }
+    }
+
     var currentRobot by remember {
         mutableStateOf(savedRobots.firstOrNull() ?: buildDemoRobot(RobotManager.normalizeOwnerUid(signedInUser?.uid)))
     }
@@ -209,7 +220,7 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
     val ros = remember { RosbridgeClient() }
     val activity = LocalContext.current as? ComponentActivity
 
-    val portraitScreens = setOf(Screen.Menu, Screen.RobotSetup)
+    val portraitScreens = setOf(Screen.Splash, Screen.Menu, Screen.RobotSetup)
 
     LaunchedEffect(currentScreen) {
         activity?.let {
@@ -319,10 +330,27 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
 
         Box(modifier = Modifier.weight(1f)) {
             when (currentScreen) {
+                Screen.Splash -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.splash),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(0.6f),
+                            contentScale = ContentScale.Fit
+                        )
+                    }
+                }
+
                 Screen.Menu -> StartMenuScreen(
                     ros = ros,
                     savedRobots = savedRobots,
                     terminalText = terminalText,
+                    isBootComplete = hasBooted,
                     isSignedIn = signedInUser != null,
                     signedInLabel = signedInUser?.email ?: "Signed in",
                     onLaunchGamepad = { robot ->
