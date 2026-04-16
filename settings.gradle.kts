@@ -22,5 +22,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "JaxGamepad"
+rootProject.name = "ROSController"
 include(":app")

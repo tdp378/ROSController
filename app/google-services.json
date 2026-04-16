@@ -9,7 +9,7 @@
       "client_info": {
         "mobilesdk_app_id": "1:728664292406:android:68e6891e055475de486c97",
         "android_client_info": {
-          "package_name": "com.example.jaxgamepad"
+          "package_name": "com.jax.roscontroller"
         }
       },
       "oauth_client": [
@@ -17,7 +17,7 @@
           "client_id": "728664292406-a61i44qefb0t3e8p7plhmirosj2elnoa.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "com.example.jaxgamepad",
+            "package_name": "com.jax.roscontroller",
             "certificate_hash": "11caed1f86b9635ea1ba6416b93f742d547cd82c"
           }
         },
@@ -25,7 +25,7 @@
           "client_id": "728664292406-j85dpu7jhfkrpb1rp8kph7e76hfhkfcp.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "com.example.jaxgamepad",
+            "package_name": "com.jax.roscontroller",
             "certificate_hash": "bf732a576a45ffca7a712b1d8c1e0d9f2db7546b"
           }
         },

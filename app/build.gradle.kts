@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.jaxgamepad"
+    namespace = "com.jax.roscontroller"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.jaxgamepad"
+        applicationId = "com.jax.roscontroller"
         minSdk = 26
         targetSdk = 35
         versionCode = 1

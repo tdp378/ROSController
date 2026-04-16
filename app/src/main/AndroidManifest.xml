@@ -16,13 +16,13 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.JaxGamepad">
+        android:theme="@style/Theme.RosController">
         <activity
-            android:name=".MainActivity"
+            android:name="com.jax.roscontroller.MainActivity"
             android:exported="true"
             android:screenOrientation="portrait"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
-            android:theme="@style/Theme.JaxGamepad">
+            android:theme="@style/Theme.RosController">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
