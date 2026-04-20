@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jax.roscontroller.CyberButton
@@ -205,6 +206,30 @@ fun StartMenuScreen(
                 }
             }
         }
+    }
+}
+
+@Preview(showBackground = true, widthDp = 400, heightDp = 800)
+@Composable
+fun StartMenuScreenPreview() {
+    com.jax.roscontroller.ui.theme.JaxGamepadTheme {
+        StartMenuScreen(
+            ros = com.jax.roscontroller.RosbridgeClient(),
+            savedRobots = listOf(
+                com.jax.roscontroller.RobotConfig(
+                    name = "ROSbot Demo",
+                    rosAddress = "192.168.1.100:9090",
+                    videoUrl = "http://192.168.1.100:8080"
+                )
+            ),
+            terminalText = "SYSTEM ONLINE\nREADY FOR PILOT",
+            isBootComplete = true,
+            isSignedIn = true,
+            signedInLabel = "pilot@jax.com",
+            onLaunchGamepad = {},
+            onLaunchSetup = {},
+            onOpenAccount = {}
+        )
     }
 }
 

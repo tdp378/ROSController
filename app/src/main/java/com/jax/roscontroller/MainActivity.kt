@@ -37,6 +37,7 @@ import coil.compose.AsyncImage
 import com.jax.roscontroller.ui.screens.JaxDriverScreen
 import com.jax.roscontroller.ui.screens.RobotSetupScreen
 import com.jax.roscontroller.ui.screens.StartMenuScreen
+import com.jax.roscontroller.ui.screens.LoadingHudScreen
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.jax.roscontroller.ui.theme.MyColors
@@ -63,7 +64,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-enum class Screen { Splash, Menu, Gamepad, RobotSetup }
+enum class Screen { Splash, Menu, Gamepad, RobotSetup, Loading }
 
 
 @Composable
@@ -318,7 +319,7 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
     )
 
     Column(modifier = Modifier.fillMaxSize()) {
-        if (currentScreen != Screen.Gamepad) {
+        if (currentScreen != Screen.Gamepad && currentScreen != Screen.Loading) {
             GlobalTopBar(
                 user = signedInUser,
                 onOpenAccount = {
@@ -357,7 +358,7 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
                     signedInLabel = signedInUser?.email ?: "Signed in",
                     onLaunchGamepad = { robot ->
                         currentRobot = robot
-                        currentScreen = Screen.Gamepad
+                        currentScreen = Screen.Loading
                     },
                     onLaunchSetup = { currentScreen = Screen.RobotSetup },
                     onOpenAccount = {
@@ -439,7 +440,16 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
                     onBack = { currentScreen = Screen.Menu },
                     onOpenAccount = {
                         showAccountDialog = true
+                    },
+                    onLaunch = { robot ->
+                        currentRobot = robot
+                        currentScreen = Screen.Loading
                     }
+                )
+
+                Screen.Loading -> LoadingHudScreen(
+                    robotName = currentRobot.name,
+                    onFinished = { currentScreen = Screen.Gamepad }
                 )
             }
         }

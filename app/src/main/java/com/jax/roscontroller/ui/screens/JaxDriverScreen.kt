@@ -39,6 +39,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.tooling.preview.Preview
+import com.jax.roscontroller.RobotConfig
+import com.jax.roscontroller.RosbridgeClient
+import com.jax.roscontroller.ui.theme.JaxGamepadTheme
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -65,8 +69,6 @@ import com.jax.roscontroller.CyberButton
 import com.jax.roscontroller.CyberDialog
 import com.jax.roscontroller.IndicatorRockerRow
 import com.jax.roscontroller.R
-import com.jax.roscontroller.RobotConfig
-import com.jax.roscontroller.RosbridgeClient
 import com.jax.roscontroller.SettingsRockerRow
 import com.jax.roscontroller.formatUptime
 import com.jax.roscontroller.ui.theme.MyColors
@@ -681,5 +683,27 @@ private fun generateMjpegHtml(url: String): String {
         </body>
         </html>
     """.trimIndent()
+}
+
+@Preview(showBackground = true, widthDp = 800, heightDp = 400)
+@Composable
+fun JaxDriverScreenPreview() {
+    JaxGamepadTheme {
+        JaxDriverScreen(
+            ros = RosbridgeClient(),
+            currentRobot = RobotConfig(
+                name = "JAX-01",
+                rosAddress = "192.168.1.100:9090",
+                videoUrl = "http://192.168.1.100:8080"
+            ),
+            savedRobots = emptyList(),
+            hapticsEnabled = true,
+            onRobotChange = {},
+            onHapticsChange = {},
+            reHideSystemBars = {},
+            onBackToMenu = {},
+            networkInfo = "WiFi" to "Connected"
+        )
+    }
 }
 

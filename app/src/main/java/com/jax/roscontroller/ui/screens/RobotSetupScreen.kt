@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -123,6 +124,7 @@ fun RobotSetupScreen(
     onDelete: (RobotConfig) -> Unit,
     onBack: () -> Unit,
     onOpenAccount: () -> Unit,
+    onLaunch: (RobotConfig) -> Unit,
     initialEditingRobot: RobotConfig? = null,
     initialIsAdding: Boolean = false,
     initialSelectedTabOrStep: Int = 0
@@ -335,6 +337,7 @@ fun RobotSetupScreen(
                     items(savedRobots) { robot ->
                         RobotListItem(
                             robot = robot,
+                            onLaunch = { onLaunch(robot) },
                             onEdit = {
                                 editingRobot = robot
                                 isAdding = false
@@ -1004,6 +1007,7 @@ fun RobotSetupScreen(
 @Composable
 fun RobotListItem(
     robot: RobotConfig,
+    onLaunch: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -1063,17 +1067,24 @@ fun RobotListItem(
                     letterSpacing = 0.5.sp
                 )
             }
+            IconButton(onClick = onLaunch) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = "Launch",
+                    tint = MyColors.HudBlue
+                )
+            }
             IconButton(onClick = onEdit) {
                 Icon(
                     imageVector = Icons.Default.Edit,
-                    contentDescription = null,
+                    contentDescription = "Edit",
                     tint = MyColors.HudText.copy(alpha = 0.7f)
                 )
             }
             IconButton(onClick = onDelete) {
                 Icon(
                     imageVector = Icons.Default.Delete,
-                    contentDescription = null,
+                    contentDescription = "Delete",
                     tint = Color.Red.copy(alpha = 0.7f)
                 )
             }
@@ -1495,6 +1506,27 @@ fun AxisSwitchRow(
     }
 }
 
+@Preview(showBackground = true, widthDp = 400)
+@Composable
+fun RobotListItemPreview() {
+    JaxGamepadTheme {
+        Surface(color = MyColors.HudBackground) {
+            Box(modifier = Modifier.padding(16.dp)) {
+                RobotListItem(
+                    robot = RobotConfig(
+                        name = "ROSbot Demo",
+                        rosAddress = "192.168.1.100:9090",
+                        videoUrl = "http://192.168.1.100:8080"
+                    ),
+                    onEdit = {},
+                    onDelete = {},
+                    onLaunch = {}
+                )
+            }
+        }
+    }
+}
+
 @Preview(showBackground = true, widthDp = 400, heightDp = 800)
 @Composable
 fun RobotSetupScreenPreview() {
@@ -1512,7 +1544,8 @@ fun RobotSetupScreenPreview() {
             onSave = { _, _ -> },
             onDelete = { },
             onBack = { },
-            onOpenAccount = { }
+            onOpenAccount = { },
+            onLaunch = { }
         )
     }
 }
@@ -1534,6 +1567,7 @@ fun RobotSetupScreenRobotTabPreview() {
             onDelete = { },
             onBack = { },
             onOpenAccount = { },
+            onLaunch = { },
             initialEditingRobot = sampleRobot,
             initialSelectedTabOrStep = 0
         )
@@ -1557,6 +1591,7 @@ fun RobotSetupScreenTopicsTabPreview() {
             onDelete = { },
             onBack = { },
             onOpenAccount = { },
+            onLaunch = { },
             initialEditingRobot = sampleRobot,
             initialSelectedTabOrStep = 1
         )
@@ -1580,6 +1615,7 @@ fun RobotSetupScreenModesTabPreview() {
             onDelete = { },
             onBack = { },
             onOpenAccount = { },
+            onLaunch = { },
             initialEditingRobot = sampleRobot,
             initialSelectedTabOrStep = 2
         )
