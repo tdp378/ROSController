@@ -26,6 +26,7 @@ data class RobotConfig(
     val cpuTempTopic: TopicBinding? = null,
     val odomTopic: TopicBinding? = null,
     val jointStateTopic: TopicBinding? = null,
+    val footSensorsTopic: TopicBinding? = null,
 
     val modes: List<RobotMode> = listOf(
         RobotMode("STAND", "stand"),

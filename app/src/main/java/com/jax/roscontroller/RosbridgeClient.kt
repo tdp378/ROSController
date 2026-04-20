@@ -26,7 +26,8 @@ data class DiscoveredRobotTopics(
     val imuTopic: TopicBinding? = null,
     val cpuTempTopic: TopicBinding? = null,
     val odomTopic: TopicBinding? = null,
-    val jointStateTopic: TopicBinding? = null
+    val jointStateTopic: TopicBinding? = null,
+    val footSensorsTopic: TopicBinding? = null
 )
 
 class RosbridgeClient {
@@ -62,6 +63,9 @@ class RosbridgeClient {
         private set
 
     var isOdomActive by mutableStateOf(false)
+        private set
+
+    var isFootSensorsActive by mutableStateOf(false)
         private set
 
     var totalDistance by mutableStateOf(0.0)
@@ -221,6 +225,7 @@ class RosbridgeClient {
         // Reset state for new robot
         isImuActive = false
         isOdomActive = false
+        isFootSensorsActive = false
 
         robot.batteryTopic?.let { binding ->
             subscribe(binding.name, binding.type) { msg ->
@@ -315,6 +320,12 @@ class RosbridgeClient {
                     else -> 0.0
                 }
                 lastCpuTemp = temp.toInt()
+            }
+        }
+
+        robot.footSensorsTopic?.let { binding ->
+            subscribe(binding.name, binding.type) { _ ->
+                isFootSensorsActive = true
             }
         }
     }
@@ -560,6 +571,18 @@ class RosbridgeClient {
                     it.name.contains("joint_states", ignoreCase = true)
                 }?.toBinding()
 
+        val footSensorsTopic =
+            allTopics.firstOrNull {
+                val isMultiArray = it.type == "std_msgs/msg/Float32MultiArray" || it.type == "std_msgs/msg/Int32MultiArray"
+                val hasFootHint = it.name.contains("foot", ignoreCase = true) || it.name.contains("sensor", ignoreCase = true)
+                val matchesRobotHint = sanitizedHint == null || it.name.lowercase().contains(sanitizedHint)
+                isMultiArray && hasFootHint && matchesRobotHint
+            }?.toBinding()
+            ?: allTopics.firstOrNull {
+                (it.name.contains("foot", ignoreCase = true) || it.name.contains("sensor", ignoreCase = true)) &&
+                        (it.type == "std_msgs/msg/Float32MultiArray" || it.type == "std_msgs/msg/Int32MultiArray")
+            }?.toBinding()
+
         return DiscoveredRobotTopics(
             allTopics = allTopics,
             cmdVelTopic = cmdVelTopic,
@@ -568,7 +591,8 @@ class RosbridgeClient {
             imuTopic = imuTopic,
             cpuTempTopic = cpuTempTopic,
             odomTopic = odomTopic,
-            jointStateTopic = jointStateTopic
+            jointStateTopic = jointStateTopic,
+            footSensorsTopic = footSensorsTopic
         )
     }
 

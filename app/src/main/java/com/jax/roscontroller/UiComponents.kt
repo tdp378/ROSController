@@ -398,7 +398,8 @@ fun IndicatorRockerRow(
                 color = if (isEnabled) MyColors.HudText else Color.Gray,
                 fontSize = 9.sp,
                 fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f)
             )
 
             Switch(

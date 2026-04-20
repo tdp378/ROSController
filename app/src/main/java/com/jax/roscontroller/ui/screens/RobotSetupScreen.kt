@@ -442,6 +442,7 @@ fun RobotSetupScreen(
             var cpuTempTopic by remember(editingRobot) { mutableStateOf(initial.cpuTempTopic) }
             var odomTopic by remember(editingRobot) { mutableStateOf(initial.odomTopic) }
             var jointStateTopic by remember(editingRobot) { mutableStateOf(initial.jointStateTopic) }
+            var footSensorsTopic by remember(editingRobot) { mutableStateOf(initial.footSensorsTopic) }
 
             var enabledIndicators by remember(editingRobot) { mutableStateOf(initial.enabledIndicators) }
 
@@ -740,6 +741,7 @@ fun RobotSetupScreen(
                                                         cpuTempTopic = disc.cpuTempTopic
                                                         odomTopic = disc.odomTopic
                                                         jointStateTopic = disc.jointStateTopic
+                                                        footSensorsTopic = disc.footSensorsTopic
                                                         discoverStatus = "SYNC COMPLETE"
                                                     }.onFailure {
                                                         discoverStatus = "SYNC FAILED"
@@ -798,6 +800,17 @@ fun RobotSetupScreen(
                                 ),
                                 placeholder = "Select Topic...",
                                 onSelected = { imuTopic = it }
+                            )
+                            TopicBindingDropdown(
+                                title = "FOOT SENSORS",
+                                selected = footSensorsTopic,
+                                options = buildTopicOptions(
+                                    allDiscoveredTopics,
+                                    listOf("std_msgs/msg/Float32MultiArray", "std_msgs/msg/Int32MultiArray"),
+                                    standardOption = TopicBinding("/foot_sensors", "std_msgs/msg/Float32MultiArray")
+                                ),
+                                placeholder = "Select Topic...",
+                                onSelected = { footSensorsTopic = it }
                             )
                             TopicBindingDropdown(
                                 title = "CPU TEMP",
@@ -947,6 +960,7 @@ fun RobotSetupScreen(
                                     cpuTempTopic = cpuTempTopic,
                                     odomTopic = odomTopic,
                                     jointStateTopic = jointStateTopic,
+                                    footSensorsTopic = footSensorsTopic,
                                     modes = modes.toList(),
                                     enabledIndicators = enabledIndicators,
                                     totalUptimeSeconds = initial.totalUptimeSeconds,

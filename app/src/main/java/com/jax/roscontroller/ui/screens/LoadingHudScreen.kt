@@ -32,17 +32,13 @@ fun LoadingHudScreen(
     val statusMessages = listOf(
         "INITIALIZING CORE SYSTEMS...",
         "ESTABLISHING SECURE UPLINK...",
-        "AUTHENTICATING PILOT CREDENTIALS...",
-        "DECRYPTING NEURAL INTERFACE...",
         "SYNCHRONIZING TELEMETRY DATA...",
-        "CALIBRATING MOTION SENSORS...",
         "MOUNTING HUD OVERLAY...",
-        "CHECKING ACTUATOR RESPONSE...",
         "SYSTEMS READY - LINK STABLE"
     )
 
     LaunchedEffect(Unit) {
-        val duration = 5000L
+        val duration = 3000L
         val startTime = System.currentTimeMillis()
         
         while (progress < 1f) {
@@ -54,7 +50,7 @@ fun LoadingHudScreen(
             
             delay(20)
         }
-        delay(2000)
+        delay(1000)
         onFinished()
     }
 

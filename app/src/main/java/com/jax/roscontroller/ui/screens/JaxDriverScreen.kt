@@ -341,6 +341,7 @@ fun JaxDriverScreen(
         totalDistance = baseDistance + ros.totalDistance,
         imuActive = ros.isImuActive && currentRobot.imuTopic != null,
         cameraActive = cameraServerOnline,
+        footSensorsActive = ros.isFootSensorsActive && currentRobot.footSensorsTopic != null,
         batteryActive = ros.isConnected && currentRobot.batteryTopic != null,
         cpuActive = ros.isConnected && currentRobot.cpuTempTopic != null,
         selectedMode = ros.lastModeText ?: currentRobot.modes.firstOrNull()?.command ?: "walk",
@@ -561,7 +562,7 @@ fun SettingsDialog(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    val leds = listOf(HudIndicator.ROS_LINK, HudIndicator.ODOM, HudIndicator.IMU, HudIndicator.CAMERA)
+                    val leds = listOf(HudIndicator.ROS_LINK, HudIndicator.FOOT_SENSORS, HudIndicator.IMU, HudIndicator.CAMERA)
                     leds.forEach { indicator ->
                         IndicatorRockerRow(indicator, activeIndicators, onToggleIndicator)
                     }
@@ -571,7 +572,7 @@ fun SettingsDialog(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    val telemetry = listOf(HudIndicator.BATTERY, HudIndicator.CPU)
+                    val telemetry = listOf(HudIndicator.BATTERY, HudIndicator.CPU, HudIndicator.ODOM)
                     telemetry.forEach { indicator ->
                         IndicatorRockerRow(indicator, activeIndicators, onToggleIndicator)
                     }

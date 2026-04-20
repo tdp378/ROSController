@@ -52,7 +52,7 @@ import kotlin.math.sqrt
 import com.jax.roscontroller.ui.theme.MyColors
 
 // Enum for LED and Telemetry selection
-enum class HudIndicator { ROS_LINK, ODOM, IMU, CAMERA, BATTERY, CPU }
+enum class HudIndicator { ROS_LINK, ODOM, IMU, CAMERA, BATTERY, CPU, FOOT_SENSORS }
 
 
 
@@ -74,6 +74,7 @@ fun JaxHudScreen(
     totalDistance: Double = 0.0,
     imuActive: Boolean = false,
     cameraActive: Boolean = false,
+    footSensorsActive: Boolean = false,
     batteryActive: Boolean = isLinked,
     cpuActive: Boolean = isLinked,
     leftJoystickValue: Pair<Float, Float> = 0f to 0f,
@@ -110,14 +111,12 @@ fun JaxHudScreen(
 
     var speedSliderValue by remember { mutableStateOf(0.0f) }
 
-    val activeLedList = remember(enabledIndicators, isLinked, odomActive, imuActive, cameraActive, totalDistance) {
+    val activeLedList = remember(enabledIndicators, isLinked, imuActive, cameraActive, footSensorsActive) {
         mutableListOf<Triple<String, Color, Boolean>>().apply {
             if (enabledIndicators.contains(HudIndicator.ROS_LINK))
                 add(Triple("ROS LINK", if (isLinked) Green else MyColors.HudBlueD, isLinked))
-            if (enabledIndicators.contains(HudIndicator.ODOM)) {
-                val distStr = String.format("%.2fM", totalDistance)
-                add(Triple("ODOM $distStr", if (odomActive) Green else MyColors.HudBlueD, odomActive))
-            }
+            if (enabledIndicators.contains(HudIndicator.FOOT_SENSORS))
+                add(Triple("FOOT SENSORS", if (footSensorsActive) Green else MyColors.HudBlueD, footSensorsActive))
             if (enabledIndicators.contains(HudIndicator.IMU))
                 add(Triple("IMU", if (imuActive) Green else MyColors.HudBlueD, imuActive))
             if (enabledIndicators.contains(HudIndicator.CAMERA))
@@ -261,8 +260,12 @@ fun JaxHudScreen(
                                 }
                                 add(Triple("CPU TEMP $cpuTemp°", cpuColor, cpuActive))
                             }
+                            if (enabledIndicators.contains(HudIndicator.ODOM)) {
+                                val distStr = String.format("%.2fM", totalDistance)
+                                add(Triple("ODOM $distStr", if (odomActive) Green else MyColors.HudBlueD, odomActive))
+                            }
                         }
-                        StatusGroup(items = telemetryItems, alignEnd = true)
+                        StatusGroup(items = telemetryItems, alignEnd = true, modifier = Modifier.padding(end = 4.dp))
                     }
 
                     HudJoystick(
