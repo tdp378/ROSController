@@ -414,7 +414,7 @@ fun RobotSetupScreen(
                 Spacer(modifier = Modifier.height(25.dp))
             }
         } else {
-            val initial = editingRobot ?: RobotConfig("", "", "")
+                val initial = editingRobot ?: RobotConfig("", "", "")
             var name by remember(editingRobot) { mutableStateOf(initial.name) }
             var addr by remember(editingRobot) { mutableStateOf(initial.rosAddress) }
             var url by remember(editingRobot) { mutableStateOf(initial.videoUrl) }

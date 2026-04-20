@@ -222,7 +222,6 @@ fun JaxHudScreen(
                                         modifier = Modifier
                                             .align(Alignment.TopStart)
                                             .padding(10.dp)
-                                            .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
                                             .padding(horizontal = 6.dp, vertical = 2.dp)
                                     ) {
                                         Text(
@@ -230,7 +229,7 @@ fun JaxHudScreen(
                                             color = Green.copy(alpha = 0.8f),
                                             fontSize = 10.sp,
                                             fontFamily = FontFamily.Monospace,
-                                            fontWeight = FontWeight.Bold
+                                            fontWeight = FontWeight.ExtraBold
                                         )
                                     }
 
@@ -248,23 +247,20 @@ fun JaxHudScreen(
                                         )
                                     }
 
-                                    // Bottom Foot Contact Overlay
-                                    Row(
+                                    // Bottom Left Foot Contact Overlay (2x2 Grid)
+                                    Column(
                                         modifier = Modifier
-                                            .align(Alignment.BottomCenter)
-                                            .padding(bottom = 12.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                            .align(Alignment.BottomStart)
+                                            .padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
-                                        repeat(4) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(8.dp)
-                                                    .background(
-                                                        if (footSensorsActive) Green else Color.Red.copy(alpha = 0.5f),
-                                                        CircleShape
-                                                    )
-                                                    .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                                            )
+                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            FootLed(active = footSensorsActive)
+                                            FootLed(active = footSensorsActive)
+                                        }
+                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            FootLed(active = footSensorsActive)
+                                            FootLed(active = footSensorsActive)
                                         }
                                     }
                                 }
@@ -985,6 +981,19 @@ fun HudJoystick(
                 .size(20.dp)
         )
     }
+}
+
+@Composable
+private fun FootLed(active: Boolean) {
+    Box(
+        modifier = Modifier
+            .size(8.dp)
+            .background(
+                if (active) Green else Color.Red.copy(alpha = 0.5f),
+                CircleShape
+            )
+            .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+    )
 }
 
 @Preview(name = "Robot Offline", widthDp = 891, heightDp = 411, showBackground = true)
