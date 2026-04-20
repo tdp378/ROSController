@@ -858,7 +858,14 @@ fun RobotSelectionDialog(
 
 
 @Composable
-fun MyColors.HudTextField(value: String, onValueChange: (String) -> Unit, label: String) {
+fun MyColors.HudTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    singleLine: Boolean = true,
+    minLines: Int = 1
+) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
@@ -870,9 +877,9 @@ fun MyColors.HudTextField(value: String, onValueChange: (String) -> Unit, label:
             )
         },
         textStyle = TextStyle(color = MyColors.HudText, fontSize = 14.sp),
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
-        minLines = 1,
+        modifier = modifier.fillMaxWidth(),
+        singleLine = singleLine,
+        minLines = minLines,
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = MyColors.HudBlue,
             unfocusedBorderColor = MyColors.HudText.copy(alpha = 0.4f),

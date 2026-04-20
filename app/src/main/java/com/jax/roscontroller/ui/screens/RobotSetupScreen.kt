@@ -423,6 +423,7 @@ fun RobotSetupScreen(
             var invertStrafe by remember(editingRobot) { mutableStateOf(initial.invertStrafe) }
             var invertHeight by remember(editingRobot) { mutableStateOf(initial.invertHeight) }
             var invertTurn by remember(editingRobot) { mutableStateOf(initial.invertTurn) }
+            var notes by remember(editingRobot) { mutableStateOf(initial.notes) }
 
             var selectedThumbnailUri by remember(editingRobot) {
                 mutableStateOf<Uri?>(
@@ -705,6 +706,27 @@ fun RobotSetupScreen(
                                     )
                                 }
                             )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            Text(
+                                text = "ROBOT NOTES".toCyber,
+                                color = MyColors.HudBlue,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+
+                            MyColors.HudTextField(
+                                value = notes,
+                                onValueChange = { notes = it },
+                                label = "NOTES / CONFIGURATION DETAILS",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(100.dp),
+                                singleLine = false,
+                                minLines = 3
+                            )
                         }
 
                         1 -> {
@@ -969,6 +991,7 @@ fun RobotSetupScreen(
                                     invertStrafe = invertStrafe,
                                     invertHeight = invertHeight,
                                     invertTurn = invertTurn,
+                                    notes = notes,
                                     robotId = editingRobot?.robotId ?: initial.robotId,
                                     ownerUid = currentOwnerUid
                                 )
@@ -1216,9 +1239,9 @@ fun TopicBindingDropdown(
 
     ExposedDropdownMenuBox(
         expanded = expanded,
-        onExpandedChange = { 
+        onExpandedChange = {
             if (!manualMode) {
-                expanded = !expanded 
+                expanded = !expanded
             }
         }
     ) {
@@ -1240,7 +1263,7 @@ fun TopicBindingDropdown(
             },
             trailingIcon = {
                 if (manualMode) {
-                    IconButton(onClick = { 
+                    IconButton(onClick = {
                         manualMode = false
                         focusManager.clearFocus()
                     }) {

@@ -37,6 +37,7 @@ fun saveRobotConfigToFirestore(
             "enabledIndicators" to robot.enabledIndicators,
             "totalUptimeSeconds" to robot.totalUptimeSeconds,
             "totalDistanceMeters" to robot.totalDistanceMeters,
+            "notes" to robot.notes,
             "updatedAt" to System.currentTimeMillis(),
             "cmdVelTopic_name" to robot.cmdVelTopic?.name,
             "cmdVelTopic_type" to robot.cmdVelTopic?.type,
@@ -177,6 +178,7 @@ fun fetchRobotsFromFirestoreForSignedInUser(
                         invertStrafe = doc.getBoolean("invertStrafe") ?: false,
                         invertHeight = doc.getBoolean("invertHeight") ?: false,
                         invertTurn = doc.getBoolean("invertTurn") ?: false,
+                        notes = doc.getString("notes") ?: "",
                         robotId = robotId,
                         ownerUid = uid
                     )

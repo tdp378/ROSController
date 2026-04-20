@@ -48,6 +48,8 @@ data class RobotConfig(
     val invertHeight: Boolean = false,
     val invertTurn: Boolean = false,
 
+    val notes: String = "",
+
     // STABLE IDENTIFIERS / OWNERSHIP
     val robotId: String = UUID.randomUUID().toString(),
     val ownerUid: String = RobotManager.GUEST_OWNER_UID
