@@ -97,7 +97,12 @@ fun JaxHudScreen(
     onModeSelected: (String) -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onTerminateClick: () -> Unit = {},
-    videoFeed: @Composable () -> Unit = { CameraPlaceholder(modifier = Modifier.fillMaxSize()) }
+    videoFeed: @Composable (overlay: @Composable () -> Unit) -> Unit = { overlay ->
+        Box(Modifier.fillMaxSize()) {
+            CameraPlaceholder(modifier = Modifier.fillMaxSize())
+            overlay()
+        }
+    }
 )
  {
     var mode by remember(selectedMode, modes) {
@@ -208,7 +213,63 @@ fun JaxHudScreen(
                             .clip(RoundedCornerShape(12.dp)),
                         color = Color.Black
                     ) {
-                        videoFeed()
+                        videoFeed {
+                            // PERSISTENT TELEMETRY OVERLAY (Visible when video is active)
+                            if (videoActive) {
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    // Top Left Telemetry Overlay
+                                    Column(
+                                        modifier = Modifier
+                                            .align(Alignment.TopStart)
+                                            .padding(10.dp)
+                                            .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = "VEL: 0.00 m/s",
+                                            color = Green.copy(alpha = 0.8f),
+                                            fontSize = 10.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+
+                                    // Top Right Camera Status Overlay
+                                    // Only show offline icon if camera is actually failing/offline
+                                    if (!cameraActive) {
+                                        Icon(
+                                            imageVector = Icons.Default.VideocamOff,
+                                            contentDescription = "Camera Offline",
+                                            tint = HudRed.copy(alpha = 0.7f),
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .padding(10.dp)
+                                                .size(18.dp)
+                                        )
+                                    }
+
+                                    // Bottom Foot Contact Overlay
+                                    Row(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomCenter)
+                                            .padding(bottom = 12.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        repeat(4) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(8.dp)
+                                                    .background(
+                                                        if (footSensorsActive) Green else Color.Red.copy(alpha = 0.5f),
+                                                        CircleShape
+                                                    )
+                                                    .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -805,7 +866,7 @@ private fun TextModeButton(label: String, selected: Boolean, onClick: () -> Unit
 }
 
 @Composable
-private fun CameraPlaceholder(modifier: Modifier = Modifier) {
+fun CameraPlaceholder(modifier: Modifier = Modifier) {
     Box(modifier = modifier.background(Color.Black))
 }
 

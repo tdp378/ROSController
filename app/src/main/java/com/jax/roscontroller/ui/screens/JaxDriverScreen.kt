@@ -134,6 +134,7 @@ fun JaxDriverScreen(
         if (ros.isConnected) {
             // Force video reload when ROS reconnects
             videoRefreshNonce++
+            videoError = null
         } else {
             // If ROS is down, we assume the camera server might be unreachable too
             cameraServerOnline = false
@@ -354,8 +355,8 @@ fun JaxDriverScreen(
         hapticsEnabled = hapticsEnabled,
         onVideoToggle = { enabled ->
             videoButtonActive = enabled
-            if (enabled) {
-                videoError = null
+            if (enabled && videoError != null) {
+                videoRefreshNonce++
             }
         },
         onLeftJoystickChanged = { x, y ->
@@ -371,12 +372,11 @@ fun JaxDriverScreen(
         onModeSelected = { mode -> ros.publishMode(currentRobot, mode) },
         onSettingsClick = { showSettings = true },
         onTerminateClick = { showTerminateVerify = true },
-        videoFeed = {
+        videoFeed = { overlay ->
             VideoFeedContainer(
                 modifier = Modifier.fillMaxSize(),
                 hatchOpen = videoButtonActive,
-                errorText = videoError,
-                videoUrl = currentRobot.videoUrl
+                overlay = overlay
             ) {
                 if (currentRobot.videoUrl.isNotBlank()) {
                     MjpegWebView(
@@ -384,15 +384,13 @@ fun JaxDriverScreen(
                         refreshNonce = videoRefreshNonce,
                         modifier = Modifier.fillMaxSize(),
                         onLoadingStateChanged = { loaded, error ->
-                            if (loaded) {
-                                videoError = null
-                                cameraServerOnline = true 
-                            } else if (error != null) {
-                                videoError = error
-                            }
+                            cameraServerOnline = loaded
+                            videoError = error
                         },
                         onUserInteraction = reHideSystemBars
                     )
+                } else {
+                    Box(modifier = Modifier.fillMaxSize().background(Color.Black))
                 }
             }
         }
@@ -403,8 +401,7 @@ fun JaxDriverScreen(
 fun VideoFeedContainer(
     modifier: Modifier = Modifier,
     hatchOpen: Boolean,
-    errorText: String?,
-    videoUrl: String,
+    overlay: @Composable () -> Unit,
     videoContent: @Composable BoxScope.() -> Unit
 ) {
     Box(
@@ -415,63 +412,12 @@ fun VideoFeedContainer(
     ) {
         videoContent()
 
-        if (hatchOpen && (errorText != null || videoUrl.isBlank())) {
-            Column(
-                modifier = Modifier.align(Alignment.Center),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                val primaryMsg = if (videoUrl.isNotBlank()) "SIGNAL LINK ERROR" else "NO VIDEO FEED CONFIGURED"
-                val secondaryMsg = if (videoUrl.isNotBlank()) "CHECK NETWORK STATUS" else "SERVER URL REQUIRED"
-
-                Icon(
-                    imageVector = if (videoUrl.isNotBlank()) {
-                        Icons.Default.SignalWifiStatusbarConnectedNoInternet4
-                    } else {
-                        Icons.Default.VideocamOff
-                    },
-                    contentDescription = null,
-                    tint = MyColors.HudBlue.copy(alpha = 0.5f),
-                    modifier = Modifier.size(42.dp)
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = primaryMsg,
-                    color = MyColors.HudBlue,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp
-                )
-                Text(
-                    text = secondaryMsg,
-                    color = MyColors.HudBlue.copy(alpha = 0.6f),
-                    fontSize = 8.sp
-                )
-                if (videoUrl.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = videoUrl,
-                        color = MyColors.HudText.copy(alpha = 0.4f),
-                        fontSize = 8.sp,
-                        fontWeight = FontWeight.Light
-                    )
-                }
-            }
-        }
+        overlay()
 
         HatchOverlay(
             modifier = Modifier.matchParentSize(),
             isOpen = hatchOpen
         )
-
-        if (!errorText.isNullOrBlank() && !hatchOpen) {
-            Text(
-                text = "VIDEO SYSTEM OFFLINE",
-                color = MyColors.HudBlue,
-                modifier = Modifier.align(Alignment.Center),
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
     }
 }
 
@@ -591,25 +537,38 @@ fun MjpegWebView(
     modifier: Modifier = Modifier,
     refreshNonce: Int = 0
 ) {
+    val finalUrl = remember(url) {
+        if (!url.startsWith("http") && !url.startsWith("https")) "http://$url" else url
+    }
+
     AndroidView(
         factory = { context ->
             WebView(context).apply {
                 layoutParams = android.view.ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
                 setBackgroundColor(android.graphics.Color.BLACK)
                 
-                webViewClient = object : WebViewClient() {
-                    override fun onPageFinished(view: WebView?, url: String?) {
-                        onLoadingStateChanged(true, null)
-                        // Absolute positioning is more reliable for centering + filling
-                        view?.evaluateJavascript("""
-                            (function() {
-                                var style = document.createElement('style');
-                                style.innerHTML = 'body { margin: 0; background: black; height: 100vh; width: 100vw; overflow: hidden; position: relative; } img { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 100%; height: 100%; object-fit: cover; }';
-                                document.head.appendChild(style);
-                            })()
-                        """.trimIndent(), null)
-                    }
+                settings.apply {
+                    javaScriptEnabled = true
+                    domStorageEnabled = true
+                    mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                }
 
+                addJavascriptInterface(object {
+                    @JavascriptInterface
+                    fun onVideoError() {
+                        post { onLoadingStateChanged(false, "Stream Error") }
+                    }
+                    @JavascriptInterface
+                    fun onVideoLoad() {
+                        post { onLoadingStateChanged(true, null) }
+                    }
+                    @JavascriptInterface
+                    fun onInteraction() {
+                        post { onUserInteraction() }
+                    }
+                }, "Android")
+
+                webViewClient = object : WebViewClient() {
                     override fun onReceivedError(
                         view: WebView?,
                         request: WebResourceRequest?,
@@ -621,21 +580,13 @@ fun MjpegWebView(
                     }
                 }
                 
-                settings.apply {
-                    javaScriptEnabled = true
-                    domStorageEnabled = true
-                    loadWithOverviewMode = true
-                    useWideViewPort = true
-                    mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                }
-                
                 setOnTouchListener { _, _ ->
                     onUserInteraction()
                     false
                 }
                 
-                val finalUrl = if (!url.startsWith("http") && !url.startsWith("https")) "http://$url" else url
-                loadUrl(finalUrl)
+                val html = generateMjpegHtml(finalUrl)
+                loadDataWithBaseURL(finalUrl, html, "text/html", "UTF-8", null)
                 tag = "$url-$refreshNonce"
             }
         },
@@ -643,8 +594,8 @@ fun MjpegWebView(
             val currentTag = "$url-$refreshNonce"
             if (it.tag != currentTag) {
                 it.tag = currentTag
-                val finalUrl = if (!url.startsWith("http") && !url.startsWith("https")) "http://$url" else url
-                it.loadUrl(finalUrl)
+                val html = generateMjpegHtml(finalUrl)
+                it.loadDataWithBaseURL(finalUrl, html, "text/html", "UTF-8", null)
             }
         },
         modifier = modifier
@@ -652,35 +603,18 @@ fun MjpegWebView(
 }
 
 private fun generateMjpegHtml(url: String): String {
-    if (url.isBlank()) return "<html><body style='background:black;'></body></html>"
-    val absoluteUrl = if (!url.startsWith("http")) "http://$url" else url
-
     return """
         <!DOCTYPE html>
         <html>
         <head>
             <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
             <style>
-                body { 
-                    margin: 0; 
-                    padding: 0; 
-                    background-color: black; 
-                    display: flex; 
-                    justify-content: center; 
-                    align-items: center; 
-                    height: 100vh; 
-                    width: 100vw; 
-                    overflow: hidden; 
-                }
-                img { 
-                    width: 100%; 
-                    height: 100%; 
-                    object-fit: cover; 
-                }
+                body { margin: 0; padding: 0; background-color: black; display: flex; justify-content: center; align-items: center; height: 100vh; width: 100vw; overflow: hidden; }
+                img { width: 100%; height: 100%; object-fit: cover; }
             </style>
         </head>
-        <body>
-            <img src="$absoluteUrl" />
+        <body onclick="Android.onInteraction()">
+            <img src="$url" onload="Android.onVideoLoad()" onerror="Android.onVideoError()" />
         </body>
         </html>
     """.trimIndent()
