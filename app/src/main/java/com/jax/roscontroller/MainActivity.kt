@@ -103,6 +103,18 @@ fun GlobalTopBar(user: com.google.firebase.auth.FirebaseUser?, onOpenAccount: ()
             }
 
             // Profile Icon on the Right
+            var cloudPhotoUrl by remember { mutableStateOf<String?>(null) }
+            LaunchedEffect(user?.uid) {
+                if (user != null) {
+                    FirebaseFirestore.getInstance().collection("users").document(user.uid)
+                        .get().addOnSuccessListener { snapshot ->
+                            cloudPhotoUrl = snapshot.getString("photoPath")
+                        }
+                } else {
+                    cloudPhotoUrl = null
+                }
+            }
+
             Box(
                 modifier = Modifier
                     .size(32.dp)
@@ -115,9 +127,10 @@ fun GlobalTopBar(user: com.google.firebase.auth.FirebaseUser?, onOpenAccount: ()
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                if (user?.photoUrl != null) {
+                val displayPhotoUrl = cloudPhotoUrl?.takeIf { it.isNotBlank() } ?: user?.photoUrl
+                if (displayPhotoUrl != null) {
                     AsyncImage(
-                        model = user.photoUrl,
+                        model = displayPhotoUrl,
                         contentDescription = "Profile Photo",
                         modifier = Modifier
                             .fillMaxSize()
@@ -288,6 +301,7 @@ fun AppNavigation(reHideSystemBars: () -> Unit) {
         },
         onSignOut = {
             FirebaseAuth.getInstance().signOut()
+            signedInUser = null
             showAccountDialog = false
         },
         onDeleteAccount = {

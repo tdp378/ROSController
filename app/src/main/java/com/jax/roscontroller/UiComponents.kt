@@ -532,19 +532,19 @@ fun AccountStatusDialog(
     var showDeleteConfirmation by remember { mutableStateOf(false) }
 
     val isSignedIn = user != null
-    var cloudUserName by remember { mutableStateOf<String?>(null) }
+    var profile by remember { mutableStateOf<UserProfile?>(null) }
 
-    // Fetch name for the main status view
-    if (isSignedIn) {
-        LaunchedEffect(user?.uid) {
+    // Fetch profile for the main status view
+    LaunchedEffect(user?.uid) {
+        if (user != null) {
             val db = FirebaseFirestore.getInstance()
-            user?.uid?.let { uid ->
-                db.collection("users").document(uid)
-                    .addSnapshotListener { snapshot, error ->
-                        if (error != null) return@addSnapshotListener
-                        cloudUserName = snapshot?.getString("displayName")
-                    }
-            }
+            db.collection("users").document(user.uid)
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) return@addSnapshotListener
+                    profile = snapshot?.toObject(UserProfile::class.java)
+                }
+        } else {
+            profile = null
         }
     }
 
@@ -611,9 +611,10 @@ fun AccountStatusDialog(
             ) {
                 // User Info Section
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    if (user?.photoUrl != null) {
+                    val profileImageUrl = profile?.photoPath?.takeIf { it.isNotBlank() } ?: user?.photoUrl
+                    if (profileImageUrl != null) {
                         AsyncImage(
-                            model = user.photoUrl,
+                            model = profileImageUrl,
                             contentDescription = "Profile Photo",
                             modifier = Modifier
                                 .size(64.dp)
@@ -632,7 +633,7 @@ fun AccountStatusDialog(
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
                         text = (if (isSignedIn) {
-                            if (!cloudUserName.isNullOrBlank()) "IDENTIFIED:$cloudUserName"
+                            if (!profile?.displayName.isNullOrBlank()) "IDENTIFIED:${profile?.displayName}"
                             else "IDENTIFIED: ${user?.email}"
                         } else {
                             "STATUS:UNREGISTERED"
@@ -719,26 +720,21 @@ fun AccountStatusDialog(
                         )
                     }
                 } else {
-                    // Logout Button
-                    CyberButton(
-                        onClick = {
-                            onSignOut()
-                            onDismiss()
-                        },
-                        modifier = Modifier.fillMaxWidth().height(45.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .border(1.dp, Color.Red.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                                .background(Color.Red.copy(alpha = 0.05f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("TERMINATE_SESSION_(LOGOUT)", color = Color.Red, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
+                    // Logout Link
+                    Text(
+                        text = "TERMINATE SESSION (LOGOUT)",
+                        color = MyColors.HudText.copy(alpha = 0.5f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        textDecoration = TextDecoration.Underline,
+                        modifier = Modifier
+                            .clickable {
+                                onSignOut()
+                                onDismiss()
+                            }
+                            .padding(vertical = 12.dp)
+                    )
 
                     Text(
                         text = "DELETE ACCOUNT",
