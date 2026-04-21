@@ -35,6 +35,10 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
@@ -286,28 +290,33 @@ fun HelpDialog(
 
             HelpSection("ADD NEW ROBOT".toCyber) {
                 HelpNote("Robot Tab")
-
-                HelpBullet("Enter robot name")
-                HelpBullet("Enter rosbridge IP:port (192.168.x.x:9090)")
-                HelpBullet("Enter video stream URL (optional)")
-                HelpBullet("Upload robot image (optional)")
-                HelpBullet("Axis settings should stay normal unless the controller is reversed")
+                HelpBullet("Enter robot name and rosbridge IP:port (192.168.x.x:9090)")
+                HelpBullet("Enter video stream URL (optional) or upload a robot image")
+                HelpBullet("AXIS SETTINGS: Invert any direction if the joysticks move the robot the wrong way.")
+                HelpBullet("NOTES: Add maintenance records, IP reminders, or hardware specs in the notes box.")
+                
                 HelpNote("Topics Tab")
-                HelpBullet("Launch rosbridge on robot")
-                HelpBullet("Tap auto discover topics")
-                HelpBullet("Use dropdowns to verify topics assigned")
-                HelpBullet("Most important is cmd_vel and mode topic")
+                HelpBullet("Launch rosbridge on robot then tap 'Auto Discover Topics'")
+                HelpBullet("Verify bindings: Most important are 'cmd_vel' and 'mode_topic'")
+                HelpBullet("Telemetry: Bind Battery, IMU, Odom, CPU Temp, or Foot Sensors to see live data.")
+                HelpBullet("Foot sensors require a Float32MultiArray (4 values: FL, FR, RL, RR).")
+
                 HelpNote("Modes Tab")
-                HelpBullet("Verify configured modes match what the robot expects")
-                HelpBullet("Add or remove modes as needed")
-                HelpBullet("Save robot configuration")
+                HelpBullet("Add custom commands (e.g., 'WALK', 'REST', 'SIT')")
+                HelpBullet("These commands are sent as Strings to your configured Mode Topic.")
+                HelpBullet("Double-check that the command string matches exactly what your robot expects.")
             }
 
-            HelpSection("CONTROLS") {
-                HelpBullet("Left stick -> movement")
-                HelpBullet("Right stick -> turn/body")
-                HelpBullet("Left slider -> height")
-                HelpBullet("Right slider -> speed")
+            HelpSection("CONTROLS".toCyber) {
+                HelpNote("Motion")
+                HelpBullet("LEFT JOYSTICK: Controls Forward/Backward and Strafe movement.")
+                HelpBullet("RIGHT JOYSTICK: Controls Turning (Left/Right).")
+                HelpNote("Adjustments")
+                HelpBullet("HGT SLIDER (Left): Controls body height (Z-axis offset).")
+                HelpBullet("SPD SLIDER (Right): Global speed limiter (0-100%). Scales all movement and turning power.")
+                HelpNote("Shortcuts")
+                HelpBullet("DOUBLE-TAP SLIDER: Resets SPD to 100% or HGT to 0.00 instantly.")
+                HelpBullet("MODE BUTTONS: Tap to switch between robot states (e.g., WALK, REST).")
             }
 
 
@@ -860,7 +869,13 @@ fun MyColors.HudTextField(
     label: String,
     modifier: Modifier = Modifier,
     singleLine: Boolean = true,
-    minLines: Int = 1
+    minLines: Int = 1,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default.copy(
+        capitalization = KeyboardCapitalization.None,
+        autoCorrectEnabled = false,
+        keyboardType = KeyboardType.Email,
+        imeAction = ImeAction.Next
+    )
 ) {
     OutlinedTextField(
         value = value,
@@ -876,6 +891,7 @@ fun MyColors.HudTextField(
         modifier = modifier.fillMaxWidth(),
         singleLine = singleLine,
         minLines = minLines,
+        keyboardOptions = keyboardOptions,
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = MyColors.HudBlue,
             unfocusedBorderColor = MyColors.HudText.copy(alpha = 0.4f),

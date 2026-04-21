@@ -94,6 +94,7 @@ fun JaxHudScreen(
     onLeftJoystickChanged: (x: Float, y: Float) -> Unit = { _, _ -> },
     onRightJoystickChanged: (x: Float, y: Float) -> Unit = { _, _ -> },
     onHeightSliderChanged: (Float) -> Unit = {},
+    onSpeedSliderChanged: (Float) -> Unit = {},
     onModeSelected: (String) -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onTerminateClick: () -> Unit = {},
@@ -114,7 +115,7 @@ fun JaxHudScreen(
     }
 
 
-    var speedSliderValue by remember { mutableStateOf(0.0f) }
+    var speedSliderValue by remember { mutableStateOf(100f) }
 
     val activeLedList = remember(enabledIndicators, isLinked, imuActive, cameraActive, footSensorsActive) {
         mutableListOf<Triple<String, Color, Boolean>>().apply {
@@ -337,9 +338,15 @@ fun JaxHudScreen(
                     )
 
                     HudVerticalSlider(
-                        value = speedSliderValue,
-                        onValueChange = { speedSliderValue = it },
+                        value = speedSliderValue / 100f,
+                        onValueChange = { 
+                            val newValue = it * 100f
+                            speedSliderValue = newValue
+                            onSpeedSliderChanged(newValue)
+                        },
                         label = "SPD",
+                        rangeMin = 0f,
+                        rangeMax = 1f,
                         modifier = Modifier
                             .align(Alignment.BottomStart)
                             .fillMaxHeight()
@@ -428,7 +435,9 @@ fun HudVerticalSlider(
     onValueChange: (Float) -> Unit,
     label: String,
     modifier: Modifier = Modifier,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    rangeMin: Float = -1f,
+    rangeMax: Float = 1f
 ) {
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
@@ -441,8 +450,8 @@ fun HudVerticalSlider(
         }
     }
 
-    val clampedValue = animatableValue.value.coerceIn(-1f, 1f)
-    val displayValue01 = (clampedValue + 1f) / 2f
+    val clampedValue = animatableValue.value.coerceIn(rangeMin, rangeMax)
+    val displayValue01 = (clampedValue - rangeMin) / (rangeMax - rangeMin)
 
     Column(
         modifier = modifier,
@@ -455,20 +464,16 @@ fun HudVerticalSlider(
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Bold,
             letterSpacing = 1.sp,
-            modifier = Modifier.pointerInput(enabled) {
-                if (enabled) {
-                    detectTapGestures(
-                        onDoubleTap = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            scope.launch {
-                                animatableValue.animateTo(0f, tween(300))
-                            }
-                            // We still want to notify the parent of the target value immediately or as it animates
-                            // For a smooth "return to zero" feel, we'll update the parent as it goes
-                        }
-                    )
-                }
-            }
+            modifier = Modifier
+        )
+
+        // Value indicator below the label
+        Text(
+            text = if (label == "SPD") "${Math.round(clampedValue * 100)}" else String.format("%.2f", clampedValue),
+            color = MyColors.HudBlue,
+            fontSize = 8.sp,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold
         )
 
         // Add a side effect to notify parent of animation progress
@@ -502,12 +507,25 @@ fun HudVerticalSlider(
             fun positionToValue(y: Float): Float {
                 val raw01 = 1f - ((y - thumbHeightPx / 2f) / usableHeightPx)
                 val clamped01 = raw01.coerceIn(0f, 1f)
-                return (clamped01 * 2f) - 1f
+                return rangeMin + (clamped01 * (rangeMax - rangeMin))
             }
 
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .pointerInput(enabled) {
+                        detectTapGestures(
+                            onDoubleTap = {
+                                if (enabled) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    scope.launch {
+                                        val targetValue = if (label == "SPD") 1f else 0f
+                                        animatableValue.animateTo(targetValue, tween(300))
+                                    }
+                                }
+                            }
+                        )
+                    }
                     .pointerInput(enabled) {
                         detectVerticalDragGestures(
                             onDragStart = { offset ->
@@ -600,29 +618,6 @@ fun HudVerticalSlider(
                             MyColors.HudText.copy(alpha = 0.35f),
                             RoundedCornerShape(6.dp)
                         )
-                )
-
-                Text(
-                    text = String.format("%.2f", clampedValue),
-                    color = MyColors.HudText.copy(alpha = 0.85f),
-                    fontSize = 8.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 2.dp)
-                        .pointerInput(enabled) {
-                            if (enabled) {
-                                detectTapGestures(
-                                    onDoubleTap = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        scope.launch {
-                                            animatableValue.animateTo(0f, tween(300))
-                                        }
-                                    }
-                                )
-                            }
-                        }
                 )
             }
         }

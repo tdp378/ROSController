@@ -98,6 +98,7 @@ fun JaxDriverScreen(
     var bodyHeightZ by remember { mutableStateOf(0.0) }   // -1.0 .. 1.0
     var bodyRollX by remember { mutableStateOf(0.0) }     // for rest mode later
     var bodyPitchY by remember { mutableStateOf(0.0) }    // for rest mode later
+    var speedMultiplier by remember { mutableStateOf(1.0) } 
     var showSettings by remember { mutableStateOf(false) }
     var showTerminateVerify by remember { mutableStateOf(false) }
     var reconnectNonce by remember { mutableIntStateOf(0) }
@@ -163,12 +164,13 @@ fun JaxDriverScreen(
         bodyHeightZ,
         bodyRollX,
         bodyPitchY,
+        speedMultiplier,
         currentRobot
     ) {
-        val linearX = if (currentRobot.invertForwardBack) -moveY else moveY
-        val linearY = if (currentRobot.invertStrafe) -moveX else moveX
+        val linearX = (if (currentRobot.invertForwardBack) -moveY else moveY) * speedMultiplier
+        val linearY = (if (currentRobot.invertStrafe) -moveX else moveX) * speedMultiplier
         val linearZ = if (currentRobot.invertHeight) -bodyHeightZ else bodyHeightZ
-        val angularZ = if (currentRobot.invertTurn) -turnZ else turnZ
+        val angularZ = (if (currentRobot.invertTurn) -turnZ else turnZ) * speedMultiplier
 
         val publishJob: Job? = if (ros.isConnected) {
             scope.launch {
@@ -368,6 +370,9 @@ fun JaxDriverScreen(
         },
         onHeightSliderChanged = { z ->
             bodyHeightZ = z.toDouble()
+        },
+        onSpeedSliderChanged = { speed ->
+            speedMultiplier = (speed / 100.0).coerceIn(0.0, 1.0)
         },
         onModeSelected = { mode -> ros.publishMode(currentRobot, mode) },
         onSettingsClick = { showSettings = true },
