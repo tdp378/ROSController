@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -287,48 +288,9 @@ fun RobotSetupScreen(
                         .wrapContentHeight(),
                     contentScale = ContentScale.Fit
                 )
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(35.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            modifier = Modifier.padding(end = 6.dp),
-                            text = "ADD NEW".toCyber,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MyColors.HudBlue,
-                            letterSpacing = 1.sp
-                        )
 
-                        IconButton(
-                            onClick = {
-                                if (hasNoUserRobots) {
-                                    showRosRequirements = true
-                                } else {
-                                    isAdding = true
-                                    selectedTabOrStep = 0
-                                    maxStepReached = 0
-                                }
-                            },
-                            modifier = Modifier
-                                .background(MyColors.HudBlue.copy(alpha = 0.1f), CircleShape)
-                                .border(1.dp, MyColors.HudBlue.copy(alpha = 0.4f), CircleShape)
-                                .size(36.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "Add New",
-                                tint = MyColors.HudBlue
-                            )
-                        }
-                    }
-                }
 
                 LazyColumn(
                     modifier = Modifier.weight(1f),
@@ -390,25 +352,60 @@ fun RobotSetupScreen(
                     }
                 }
 
-                CyberButton(
-                    onClick = onBack,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Box(
+                    CyberButton(
+                        onClick = onBack,
                         modifier = Modifier
-                            .fillMaxSize()
-                            .border(1.dp, MyColors.HudText.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-                            .background(MyColors.HudSurface, RoundedCornerShape(10.dp)),
-                        contentAlignment = Alignment.Center
+                            .weight(1f)
+                            .height(50.dp)
                     ) {
-                        Text(
-                            text = "BACK",
-                            color = MyColors.HudText.copy(alpha = 0.75f),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
-                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .border(1.dp, MyColors.HudText.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                                .background(MyColors.HudSurface, RoundedCornerShape(10.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "BACK",
+                                color = MyColors.HudText.copy(alpha = 0.75f),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+
+                    CyberButton(
+                        onClick = {
+                            if (hasNoUserRobots) {
+                                showRosRequirements = true
+                            } else {
+                                isAdding = true
+                                selectedTabOrStep = 0
+                                maxStepReached = 0
+                            }
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .border(1.dp, MyColors.HudBlue, RoundedCornerShape(10.dp))
+                                .background(MyColors.HudBlue.copy(alpha = 0.10f), RoundedCornerShape(10.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "ADD NEW ▶",
+                                color = MyColors.HudBlue,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                        }
                     }
                 }
                 Spacer(modifier = Modifier.height(25.dp))
@@ -933,7 +930,7 @@ fun RobotSetupScreen(
                             .weight(1f)
                             .height(50.dp)
                     ) {
-                        val label = if (isAdding && selectedTabOrStep > 0) "BACK" else "CANCEL"
+                        val label = "BACK"
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()

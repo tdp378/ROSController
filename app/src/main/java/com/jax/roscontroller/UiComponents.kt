@@ -156,7 +156,7 @@ fun CyberDialog(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                "DISMISS",
+                                "BACK",
                                 color = Color.Gray,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp,
