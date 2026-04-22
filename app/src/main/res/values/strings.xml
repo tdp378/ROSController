@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Jax ROS Controller</string>
+    <string name="app_name">ROS Controller</string>
     <string name="app_description">Universal mobile controller for ROS-based robots. Control your robot with dual joysticks, real-time telemetry, and customizable behavior modes over rosbridge.</string>
     <string name="app_keywords">ROS, ROS2, quadruped, robot, controller, rosbridge, gamepad, teleop, robotics, hardware control, joystick, telemetry</string>
     <string name="default_web_client_id">728664292406-vqdmgipg82n95ffbhq18as5eki65mlqr.apps.googleusercontent.com</string>

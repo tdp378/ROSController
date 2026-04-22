@@ -365,8 +365,8 @@ fun RobotSetupScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .border(1.dp, MyColors.HudText.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-                                .background(MyColors.HudSurface, RoundedCornerShape(10.dp)),
+                                .border(1.dp, MyColors.HudText.copy(alpha = 0.2f), RoundedCornerShape(10.dp))
+                                .background(MyColors.HudBackground, RoundedCornerShape(10.dp)),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
@@ -934,8 +934,8 @@ fun RobotSetupScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .border(1.dp, MyColors.HudText.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-                                .background(MyColors.HudSurface, RoundedCornerShape(10.dp)),
+                                .border(1.dp, MyColors.HudText.copy(alpha = 0.2f), RoundedCornerShape(10.dp))
+                                .background(MyColors.HudBackground, RoundedCornerShape(10.dp)),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
@@ -1183,8 +1183,8 @@ fun DiscoverTopicsButton(
             .fillMaxWidth()
             .height(50.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(MyColors.HudBlue.copy(alpha = 0.05f))
-            .border(1.dp, MyColors.HudBlue.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+            .background(MyColors.HudBlue.copy(alpha = 0.1f))
+            .border(1.dp, MyColors.HudBlue.copy(alpha = 1f), RoundedCornerShape(12.dp))
             .clickable(enabled = !discovering, onClick = onClick)
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center
@@ -1202,7 +1202,7 @@ fun DiscoverTopicsButton(
             Column {
                 Text(
                     text = "AUTO DISCOVER TOPICS".toCyber,
-                    color = MyColors.HudBlue,
+                    color = MyColors.HudText.copy(alpha = 0.7f),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp
@@ -1210,7 +1210,7 @@ fun DiscoverTopicsButton(
                 if (!status.isNullOrBlank()) {
                     Text(
                         text = status.uppercase(),
-                        color = MyColors.HudText.copy(alpha = 0.5f),
+                        color = MyColors.HudText.copy(alpha = 0.7f),
                         fontSize = 8.sp,
                         fontWeight = FontWeight.Light
                     )
@@ -1293,8 +1293,8 @@ fun TopicBindingDropdown(
             expanded = expanded,
             onDismissRequest = { expanded = false },
             modifier = Modifier
-                .background(MyColors.HudSurface)
-                .border(1.dp, MyColors.HudBorder, RoundedCornerShape(4.dp))
+                .background(MyColors.HudBackground)
+                .border(1.dp, MyColors.HudBorder.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
         ) {
             // Manual entry option at the top
             DropdownMenuItem(

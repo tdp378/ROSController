@@ -151,13 +151,13 @@ fun CyberDialog(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .border(1.dp, Color.Gray.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                                .background(Color.Gray.copy(alpha = 0.05f)),
+                                .border(1.dp, MyColors.HudText.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                                .background(MyColors.HudBackground),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 "BACK",
-                                color = Color.Gray,
+                                color = MyColors.HudText.copy(alpha = 0.7f),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp,
                                 letterSpacing = 1.sp
